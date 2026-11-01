@@ -680,6 +680,7 @@ static struct {
     int ready;
     int on;
     int sensitivity;        /* RECOMP_MOUSE_SENSITIVITY_MIN..MAX */
+    int invert;             /* mouse_invert: up turns the view down */
 } g_look;
 
 static void look_settings(void)
@@ -693,6 +694,7 @@ static void look_settings(void)
                           RECOMP_MOUSE_SENSITIVITY_DEFAULT);
     g_look.sensitivity = v < RECOMP_MOUSE_SENSITIVITY_MIN ? RECOMP_MOUSE_SENSITIVITY_MIN
                        : v > RECOMP_MOUSE_SENSITIVITY_MAX ? RECOMP_MOUSE_SENSITIVITY_MAX : v;
+    g_look.invert = recomp_config_bool("RECOMP_MOUSE_INVERT", "mouse_invert", 0);
     g_look.ready = 1;
 }
 
@@ -725,8 +727,8 @@ void recomp_bindings_init(void)
         fprintf(stderr, "[INPUT]   controller %d: %s\n", i + 1, g_ctl[i].label);
     look_settings();
     if (g_look.on)
-        fprintf(stderr, "[INPUT] mouse look: controller 1's right stick, sensitivity %d%s\n",
-                g_look.sensitivity,
+        fprintf(stderr, "[INPUT] mouse look: controller 1's right stick, sensitivity %d%s%s\n",
+                g_look.sensitivity, g_look.invert ? ", inverted" : "",
                 g_ctl[0].device == DEV_NONE ? " -- but controller 1 reads nothing" : "");
     fflush(stderr);
 }
@@ -955,6 +957,64 @@ static unsigned long long now_us(void)
 #endif
 }
 
+/* ---- native mouse aim (input_bindings.h) */
+
+/* When a title last took the motion itself, in microseconds; 0 never. */
+static volatile unsigned long long g_take_at;
+
+static void take_publish(unsigned long long t)
+{
+#if defined(_WIN32)
+    InterlockedExchange64((volatile LONG64 *)&g_take_at, (LONG64)t);
+#else
+    __atomic_store_n(&g_take_at, t, __ATOMIC_SEQ_CST);
+#endif
+}
+
+static unsigned long long take_read(void)
+{
+#if defined(_WIN32)
+    return (unsigned long long)InterlockedCompareExchange64((volatile LONG64 *)&g_take_at, 0, 0);
+#else
+    return __atomic_load_n(&g_take_at, __ATOMIC_SEQ_CST);
+#endif
+}
+
+/* A title is aiming with the mouse itself: the stick must leave it alone. */
+static int take_active(unsigned long long now)
+{
+    unsigned long long at = take_read();
+
+    return at && now - at < (unsigned long long)RECOMP_MOUSE_TAKE_HOLD_MS * 1000ull;
+}
+
+int recomp_mouse_take(float *dx, float *dy)
+{
+    float x, y;
+
+    look_settings();
+    take_publish(now_us());
+    x = (float)MOUSE_TAKE(&g_mouse_dx) / LOOK_FIXED;
+    y = (float)MOUSE_TAKE(&g_mouse_dy) / LOOK_FIXED;
+    if (g_look.invert)
+        y = -y;
+    if (dx) *dx = x;
+    if (dy) *dy = y;
+    return x != 0.0f || y != 0.0f;
+}
+
+int recomp_mouse_sensitivity(void)
+{
+    look_settings();
+    return g_look.sensitivity;
+}
+
+int recomp_mouse_invert(void)
+{
+    look_settings();
+    return g_look.invert;
+}
+
 /* A stick says how fast to turn and a mouse says how far it moved, so the
  * stick is pushed in proportion to the mouse's speed: the counts that
  * arrived since the last look, over the time since. Worked out again at
@@ -1004,6 +1064,8 @@ static void look_axes(float out[2])
             elapsed = 250000ull;
         moved[0] = (float)MOUSE_TAKE(&g_mouse_dx) / LOOK_FIXED;
         moved[1] = -(float)MOUSE_TAKE(&g_mouse_dy) / LOOK_FIXED;     /* screen y grows down */
+        if (g_look.invert)
+            moved[1] = -moved[1];
         for (i = 0; i < 2; i++) {
             speed = moved[i] * 1000000.0f / (float)elapsed;
             g_look_out[i] = look_shape((speed + g_look_speed[i]) * 0.5f);
@@ -1167,7 +1229,9 @@ int recomp_bindings_sample(unsigned port, XBOX_GAMEPAD *out)
     }
     /* Mouse look goes on top of the right stick's bindings rather than in
      * place of them: the pad's stick, or keys bound to it, still turn. */
-    if (port == 0 && g_look.on) {
+    /* A title taking the motion itself (recomp_mouse_take) has it, and
+     * the stick must not turn the camera a second time. */
+    if (port == 0 && g_look.on && !take_active(now_us())) {
         float look[2];
 
         look_axes(look);

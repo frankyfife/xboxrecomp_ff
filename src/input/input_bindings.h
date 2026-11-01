@@ -74,6 +74,31 @@ void recomp_mouse_button(int button, int down);
  * not yet read is dropped, so nothing is left held or moving. */
 void recomp_mouse_release(void);
 
+/* ---- native mouse aim
+ *
+ * A stick says how fast to turn; a mouse says how far it moved. Mouse look
+ * on the stick (above) turns one into the other, so the title's own stick
+ * handling -- dead zone, acceleration, top turn rate, the slow "fine aim"
+ * of a console shooter -- still sits between the hand and the camera. A
+ * title that knows where its view angles are can do better: take the
+ * motion itself and add it to them.
+ *
+ * recomp_mouse_take hands over the counts moved since the last take (x
+ * right, y down as the screen has it, with mouse_invert already applied)
+ * and returns 1 when there were any. While a title keeps taking -- at
+ * least once every RECOMP_MOUSE_TAKE_HOLD_MS -- the motion is not added to
+ * controller 1's right stick as well, so the camera never turns twice.
+ * When it stops (a menu, a cutscene, a turret it does not handle), mouse
+ * look on the stick takes over again by itself. Only counted while mouse
+ * look is on. Safe from any thread. */
+#define RECOMP_MOUSE_TAKE_HOLD_MS 100
+int   recomp_mouse_take(float *dx, float *dy);
+/* The player's mouse settings, for a title that aims with the mouse
+ * itself: mouse_sensitivity (RECOMP_MOUSE_SENSITIVITY_MIN..MAX, see
+ * recomp_config.h) and mouse_invert (0 or 1; up moves the view down). */
+int   recomp_mouse_sensitivity(void);
+int   recomp_mouse_invert(void);
+
 #ifdef __cplusplus
 }
 #endif

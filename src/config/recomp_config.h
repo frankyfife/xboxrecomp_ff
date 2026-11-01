@@ -242,6 +242,7 @@ typedef struct RecompSettings {
      * a surprise in the next. */
     int  mouse_look;            /* 0 or 1 */
     int  mouse_sensitivity;     /* RECOMP_MOUSE_SENSITIVITY_MIN..MAX */
+    int  mouse_invert;          /* 0 or 1: moving the mouse up turns the view down */
     /* The on-screen controls (src/input/touch_controls.h). */
     char touch_controls[8];     /* "auto", "on", "off" */
     double touch_opacity;       /* 0.1 .. 1.0 */

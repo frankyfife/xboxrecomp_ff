@@ -303,6 +303,7 @@ void recomp_settings_defaults(RecompSettings *s)
     s->frame_interp      = 1;
     s->mouse_look        = 0;
     s->mouse_sensitivity = RECOMP_MOUSE_SENSITIVITY_DEFAULT;
+    s->mouse_invert      = 0;
     snprintf(s->touch_controls, sizeof s->touch_controls, "auto");
     s->touch_opacity     = 0.45;
     s->touch_scale       = 1.0;
@@ -381,6 +382,8 @@ int recomp_settings_read(const char *path, RecompSettings *s)
         if ((v = from_table("mouse_sensitivity")) != NULL)
             s->mouse_sensitivity = clamp_int(atoi(v), RECOMP_MOUSE_SENSITIVITY_MIN,
                                              RECOMP_MOUSE_SENSITIVITY_MAX);
+        if ((v = from_table("mouse_invert")) != NULL)
+            s->mouse_invert = !off_word(v);
         if ((v = from_table("touch_controls")) != NULL)
             snprintf(s->touch_controls, sizeof s->touch_controls, "%s", v);
         if ((v = from_table("touch_opacity")) != NULL)
@@ -541,7 +544,10 @@ int recomp_settings_write(const char *path, const RecompSettings *s)
         "#\n"
         "# How far a movement pushes the stick, %d to %d; %d is the default, a\n"
         "# full push at %d mouse counts a second.  [RECOMP_MOUSE_SENSITIVITY]\n"
-        "mouse_sensitivity = %d\n",
+        "mouse_sensitivity = %d\n"
+        "#\n"
+        "# 1 turns the view down when the mouse moves up.  [RECOMP_MOUSE_INVERT]\n"
+        "mouse_invert = %d\n",
         s->resolution_scale, s->widescreen, hor_plus, reg,
         s->widescreen_2d[0] ? s->widescreen_2d : "auto",
         s->anisotropy, s->frame_cap[0] ? s->frame_cap : "adaptive", s->fps_overlay,
@@ -550,7 +556,8 @@ int recomp_settings_write(const char *path, const RecompSettings *s)
         RECOMP_MOUSE_SENSITIVITY_MIN, RECOMP_MOUSE_SENSITIVITY_MAX,
         RECOMP_MOUSE_SENSITIVITY_DEFAULT, 100000 / RECOMP_MOUSE_SENSITIVITY_DEFAULT,
         clamp_int(s->mouse_sensitivity, RECOMP_MOUSE_SENSITIVITY_MIN,
-                  RECOMP_MOUSE_SENSITIVITY_MAX));
+                  RECOMP_MOUSE_SENSITIVITY_MAX),
+        s->mouse_invert ? 1 : 0);
 
     fprintf(f,
         "\n"

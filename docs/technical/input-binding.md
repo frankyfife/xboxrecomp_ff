@@ -192,6 +192,30 @@ like any first press.
 `tests/input_mouse` drives both through `recomp_bindings_sample` with no
 window and no pad.
 
+### Native mouse aim (Nov 2026)
+
+Mouse look on the stick keeps the title's stick handling between the hand
+and the camera: its dead zone, its acceleration, its top turn rate, and in a
+console shooter the slow "fine aim" mode. A title that knows where its view
+angles are does better by taking the motion itself:
+
+- `recomp_mouse_take(&dx, &dy)` hands over the counts moved since the last
+  take (x right, y down, `mouse_invert` applied) and returns 1 when there
+  were any. Call it once per game frame where the title turns its camera,
+  and add the counts to the view angles.
+- While a title keeps taking (at least once every
+  `RECOMP_MOUSE_TAKE_HOLD_MS`, 100 ms), the motion is **not** added to
+  controller 1's right stick, so the camera never turns twice. When it
+  stops -- a menu, a cutscene, a turret the title's hook does not cover --
+  mouse look on the stick has the mouse again by itself, with nothing to
+  switch.
+- `recomp_mouse_sensitivity()` and `recomp_mouse_invert()` give the player's
+  settings (`mouse_sensitivity`, and `mouse_invert` / `RECOMP_MOUSE_INVERT`,
+  new with this; the stick path honours `mouse_invert` too).
+
+The window side is unchanged: the same `mouse_look` switch takes the
+pointer. `tests/input_mouse` checks the hand-over in both directions.
+
 ## The UI
 
 ```

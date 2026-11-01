@@ -138,6 +138,37 @@ int main(void)
     }
     check(pad.sThumbRX == 0 && pad.sThumbRY == 0, "a mouse that stops lets the stick go");
 
+    /* ---- native mouse aim: a title that takes the motion gets counts,
+     * and the stick is left alone while it keeps taking. */
+    {
+        float dx = 0.0f, dy = 0.0f;
+
+        recomp_mouse_take(NULL, NULL);          /* drop anything left over */
+        recomp_mouse_move(12.0f, -4.5f);
+        check(recomp_mouse_take(&dx, &dy) == 1, "a take after a move has motion");
+        check(dx == 12.0f && dy == -4.5f, "the take is the counts moved, y down as the screen");
+        check(recomp_mouse_take(&dx, &dy) == 0 && dx == 0.0f && dy == 0.0f,
+              "a second take has nothing");
+
+        recomp_mouse_move(-2000.0f, 0.0f);
+        sleep_ms(15);
+        pad = sample();
+        check(pad.sThumbRX == 0, "while the title takes, the stick does not turn as well");
+        check(recomp_mouse_take(&dx, NULL) == 1 && dx == -2000.0f,
+              "and the motion waits for the title");
+
+        /* The title stops taking (a menu): the stick has the mouse again. */
+        sleep_ms(RECOMP_MOUSE_TAKE_HOLD_MS + 30);
+        pad = sample();                         /* starts the stick's clock */
+        sleep_ms(15);
+        recomp_mouse_move(-2000.0f, 0.0f);
+        sleep_ms(15);
+        pad = sample();
+        check(pad.sThumbRX < 0, "once the title stops taking, the stick follows the mouse again");
+        check(recomp_mouse_sensitivity() == 25, "the title sees the player's sensitivity");
+        check(recomp_mouse_invert() == 0, "and that up is up");
+    }
+
     remove(path);
     if (failures)
         printf("input_mouse: %d failure(s)\n", failures);
