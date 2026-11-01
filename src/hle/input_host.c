@@ -367,6 +367,19 @@ static void record_input(const RecompInputGamepad *g)
     }
 }
 
+/* The last port-0 sample's sticks (recomp_input_host_last_sticks). */
+static volatile short s_last_sticks[4];
+static volatile int   s_last_have;
+
+int recomp_input_host_last_sticks(short out[4])
+{
+    int i;
+
+    for (i = 0; i < 4; i++)
+        out[i] = s_last_have ? s_last_sticks[i] : 0;
+    return s_last_have;
+}
+
 /* One port, through its bindings. The bound sample arrives as the layout
  * src/input already speaks (XBOX_GAMEPAD); the two structures are the same
  * eight analog bytes and four axes in the same order, so this is a copy. */
@@ -391,6 +404,11 @@ bool recomp_input_host_sample_port(unsigned port, RecompInputGamepad *gamepad)
         record_input(gamepad);      /* the person, before any script adds to it */
         fake_input(gamepad);
         seq_input(gamepad);
+        s_last_sticks[0] = gamepad->thumb_lx;
+        s_last_sticks[1] = gamepad->thumb_ly;
+        s_last_sticks[2] = gamepad->thumb_rx;
+        s_last_sticks[3] = gamepad->thumb_ry;
+        s_last_have = 1;
     }
     return true;
 }

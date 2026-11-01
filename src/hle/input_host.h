@@ -26,4 +26,12 @@ bool recomp_input_host_sample_port(unsigned port, RecompInputGamepad *gamepad);
 /* Port 0, for callers that only ever had one pad. */
 bool recomp_input_host_sample(RecompInputGamepad *gamepad);
 
+/* The sticks of the last port-0 sample the title was given, scripts
+ * (RECOMP_INPUT_SEQ, RECOMP_FAKE_INPUT) included: lx, ly, rx, ry, -32768..
+ * 32767. For a title's own diagnostics -- e.g. finding which guest values
+ * follow the right stick -- without sampling the pad a second time (which
+ * would start a script's clock or eat mouse motion). 0 before the first
+ * sample. Safe from any thread; a torn read costs one stale axis. */
+int  recomp_input_host_last_sticks(short out[4]);
+
 #endif
