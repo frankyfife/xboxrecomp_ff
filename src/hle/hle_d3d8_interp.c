@@ -741,6 +741,18 @@ static void redraw(double a)
         return;
     }
     hle_d3d8_interp_rec = 0;                     /* what is drawn now is not kept */
+    {
+        /* RECOMP_INTERP_BLEND=<a>: every in-between frame at that blend, 1
+         * being frame N's own matrices: a redraw that still differs from N
+         * there is the list's replay, not the blending. */
+        static double fixed = -2.0;
+        if (fixed < -1.0) {
+            const char *v = getenv("RECOMP_INTERP_BLEND");
+            fixed = v && *v ? atof(v) : -1.0;
+        }
+        if (fixed >= 0.0)
+            a = fixed;
+    }
     for (off = 0; off < cur->len; ) {
         op_header *h = (op_header *)(cur->ops + off);
         if (h->draw >= 0)
