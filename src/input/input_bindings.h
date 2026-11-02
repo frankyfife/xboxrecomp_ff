@@ -104,6 +104,9 @@ int   recomp_mouse_take(float *dx, float *dy);
  * itself: mouse_sensitivity (RECOMP_MOUSE_SENSITIVITY_MIN..MAX, see
  * recomp_config.h) and mouse_invert (0 or 1; up moves the view down). */
 int   recomp_mouse_sensitivity(void);
+/* The mouse buttons held now, a bit per RECOMP_MOUSE_* (1 << RECOMP_MOUSE_LEFT
+ * and so on), for a title that uses them itself: pointing at its menus. */
+int   recomp_mouse_buttons(void);
 int   recomp_mouse_invert(void);
 
 #ifdef __cplusplus

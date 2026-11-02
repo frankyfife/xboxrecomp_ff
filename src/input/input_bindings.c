@@ -1042,6 +1042,11 @@ int recomp_mouse_take(float *dx, float *dy)
     return x != 0.0f || y != 0.0f;
 }
 
+int recomp_mouse_buttons(void)
+{
+    return (int)g_mouse_held;
+}
+
 int recomp_mouse_sensitivity(void)
 {
     look_settings();

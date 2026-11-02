@@ -51,6 +51,12 @@ void d3d8_overlay_present(RhiView *out, unsigned w, unsigned h,
 /* Releases everything. Called from the device teardown. */
 void d3d8_overlay_shutdown(void);
 
+/* The pointer a title asked for (xbox_D3D8SetPointer, d3d8_pointer.c), over
+ * the picture at (pic_x, pic_y), pic_w x pic_h. */
+void d3d8_pointer_present(RhiView *out, unsigned w, unsigned h, unsigned pic_x,
+                          unsigned pic_y, unsigned pic_w, unsigned pic_h);
+void d3d8_pointer_shutdown(void);
+
 #ifdef __cplusplus
 }
 #endif

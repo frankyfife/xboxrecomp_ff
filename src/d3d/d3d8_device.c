@@ -559,6 +559,8 @@ static void present_scene(void)
     }
     d3d8_display_resolve(s->rhi_scene_srv, s->width, s->height, rhi_swapchain_view(), fit);
     d3d8_overlay_present(rhi_swapchain_view(), s->swap_width, s->swap_height, fit.x, fit.y, fit.h);
+    d3d8_pointer_present(rhi_swapchain_view(), s->swap_width, s->swap_height, fit.x, fit.y,
+                         fit.w, fit.h);
     d3d8_touch_draw(rhi_swapchain_view(), s->swap_width, s->swap_height);
     keep_presented();
 }
@@ -873,6 +875,7 @@ static ULONG __stdcall dev_Release(IDirect3DDevice8 *self)
         /* Cleanup subsystems first */
         up_ring_shutdown();
         d3d8_overlay_shutdown();
+        d3d8_pointer_shutdown();
         d3d8_touch_shutdown();
         d3d8_clear_shutdown();
         d3d8_movie_shutdown();

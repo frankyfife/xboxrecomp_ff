@@ -1313,6 +1313,12 @@ enum {
 };
 void xbox_D3D8SetTwoDPlacement(int placement, uint32_t tag);
 
+/* A mouse pointer drawn over the picture (d3d8_pointer.c), for a title whose
+ * menus can be pointed at: shown or not, and where its tip is in the title's
+ * own 2D pixels, placed as a 2D draw kept in proportion in the middle is
+ * (CENTRE above). It is not part of the frame. */
+void xbox_D3D8SetPointer(int shown, float x, float y);
+
 /* A title's own test for which of its fixed-function draws are screen-space.
  * The renderer knows two kinds: pre-transformed vertices, and a vertex
  * program that does not use the projection. A title can draw its 2D a third
