@@ -1293,9 +1293,13 @@ void xbox_D3D8DefaultWindowSize(UINT guest_w, UINT guest_h, UINT *width, UINT *h
  *            image through one function, its health box inside the
  *            screen and its damage indicator as quarter-screen quads that
  *            overhang the edge, too narrow for AUTO to let span.
+ *   HIDE     leave the draws out, 2D and 3D alike, widescreen or not: for
+ *            a title that lets the player switch an effect off and knows
+ *            which of its functions draws it (TimeSplitters 2's sun glare
+ *            and falling snow).
  *
- * Holds until changed; 3D draws ignore it; without widescreen nothing is
- * squeezed and it has no effect. `tag` names the title's call site for
+ * Holds until changed; 3D draws ignore it but for HIDE; without widescreen
+ * nothing is squeezed and it has no other effect. `tag` names the title's call site for
  * RECOMP_D3D8_2D_TAGS=1, which reports each tag's draws and extent. */
 enum {
     XBOX_D3D8_2D_AUTO = 0,
@@ -1304,7 +1308,8 @@ enum {
     XBOX_D3D8_2D_LEFT,
     XBOX_D3D8_2D_RIGHT,
     XBOX_D3D8_2D_SIDE,
-    XBOX_D3D8_2D_EDGE
+    XBOX_D3D8_2D_EDGE,
+    XBOX_D3D8_2D_HIDE
 };
 void xbox_D3D8SetTwoDPlacement(int placement, uint32_t tag);
 

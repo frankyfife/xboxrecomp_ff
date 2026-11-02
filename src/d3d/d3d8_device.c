@@ -1244,6 +1244,9 @@ static BOOL screen_filter_left_out(void)
     const DWORD *rs;
     DWORD s;
 
+    /* And whatever the title has asked to hide (XBOX_D3D8_2D_HIDE). */
+    if (g_2d_placement == XBOX_D3D8_2D_HIDE)
+        return TRUE;
     if (d3d8_display_policy()->screen_filters)
         return FALSE;
     rs = d3d8_GetRenderStates();
@@ -2549,7 +2552,8 @@ static void two_d_tag_note(const void *vertices, UINT stride, UINT count)
 
 static void two_d_tag_frame(void)
 {
-    static const char *names[] = { "auto", "stretch", "centre", "left", "right", "side", "edge" };
+    static const char *names[] = { "auto", "stretch", "centre", "left", "right", "side", "edge",
+                                   "hide" };
     UINT guest_w = d3d8_GetGuestWidth();
     int i;
 
@@ -2558,7 +2562,7 @@ static void two_d_tag_frame(void)
     fprintf(stderr, "[2D-TAGS] frame %lu: %d tag(s)\n", g_tag_frames, g_tag_count);
     for (i = 0; i < g_tag_count; i++) {
         const TwoDTagStat *t = &g_tag_stats[i];
-        int pl = t->placement >= 0 && t->placement <= XBOX_D3D8_2D_EDGE ? t->placement : 0;
+        int pl = t->placement >= 0 && t->placement <= XBOX_D3D8_2D_HIDE ? t->placement : 0;
 
         fprintf(stderr, "[2D-TAGS]   tag %08X %-7s draws %6lu  x %7.1f..%7.1f (%5.1f%%) "
                 "widest %5.1f%%\n", t->tag, names[pl], t->draws, t->lo, t->hi,
@@ -2573,7 +2577,7 @@ void xbox_D3D8SetTwoDPlacement(int placement, uint32_t tag)
 {
     int anchor;
 
-    if (placement < XBOX_D3D8_2D_AUTO || placement > XBOX_D3D8_2D_EDGE)
+    if (placement < XBOX_D3D8_2D_AUTO || placement > XBOX_D3D8_2D_HIDE)
         placement = XBOX_D3D8_2D_AUTO;
     g_2d_tag = tag;
     if (placement == g_2d_placement)
