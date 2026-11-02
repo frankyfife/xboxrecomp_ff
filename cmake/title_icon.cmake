@@ -8,10 +8,14 @@
 # (launcher_win32.c, src/hle/hle_d3d8.c).
 
 # The resource script naming the .ico, written once into the build folder:
-# an absolute path, so rc.exe finds it from wherever it runs.
+# an absolute path, so rc.exe finds it from wherever it runs. A title with an
+# icon of its own sets XBOXRECOMP_TITLE_ICON to its .ico before this runs.
 function(xboxrecomp_icon_rc OUT)
     get_filename_component(_ico "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../assets/icon/xboxrecomp.ico"
                            ABSOLUTE)
+    if(XBOXRECOMP_TITLE_ICON)
+        get_filename_component(_ico "${XBOXRECOMP_TITLE_ICON}" ABSOLUTE)
+    endif()
     set(_rc "${CMAKE_BINARY_DIR}/xboxrecomp_icon.rc")
     set(_text "1 ICON \"${_ico}\"\n")
     if(EXISTS "${_rc}")
