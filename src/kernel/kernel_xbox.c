@@ -206,6 +206,34 @@ uint32_t xbox_kernel_console_av_standard(void)
     return console_av_region();
 }
 
+/* The dashboard language (XC_LANGUAGE): what a multi-language disc, such as a
+ * PAL release, shows its text in. English unless the player says otherwise:
+ * `language = de` (or RECOMP_LANGUAGE), by code or by the dashboard's own
+ * number, 1 English, 2 Japanese, 3 German, 4 French, 5 Spanish, 6 Italian,
+ * 7 Korean, 8 Chinese, 9 Portuguese. A disc without that language falls back
+ * to its own default, as it did on a console set to it. */
+static ULONG console_language(void)
+{
+    static const char *const codes[] = {
+        "en", "ja", "de", "fr", "es", "it", "ko", "zh", "pt",
+    };
+    const char *v = recomp_config_lookup("RECOMP_LANGUAGE", "language");
+    size_t i;
+
+    if (!v || !v[0])
+        return 1;
+    if (v[0] >= '1' && v[0] <= '9' && v[1] == '\0')
+        return (ULONG)(v[0] - '0');
+    for (i = 0; i < sizeof codes / sizeof codes[0]; i++) {
+        char a = v[0], b = v[1];
+        if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
+        if (a == codes[i][0] && b == codes[i][1])
+            return (ULONG)(i + 1);
+    }
+    return 1;
+}
+
 /* The block reads: a whole section of the EEPROM at once, rather than one
  * setting. XNet reads all of it (XC_MAX_ALL) when it starts and derives the
  * console's network identity from it, so answering zeros there gave it a
@@ -280,9 +308,9 @@ NTSTATUS __stdcall xbox_ExQueryNonVolatileSetting(
 
     switch (ValueIndex) {
     case XC_LANGUAGE:
-        /* English = 1 */
+        /* English = 1 unless the settings name another (console_language) */
         if (ValueLength >= sizeof(ULONG)) {
-            *(PULONG)Value = 1;
+            *(PULONG)Value = console_language();
             if (Type) *Type = 4; /* REG_DWORD */
             if (ResultLength) *ResultLength = sizeof(ULONG);
         }
