@@ -370,6 +370,12 @@ static void record_input(const RecompInputGamepad *g)
 /* The last port-0 sample's sticks (recomp_input_host_last_sticks). */
 static volatile short s_last_sticks[4];
 static volatile int   s_last_have;
+static RecompInputPort0Filter s_port0_filter;
+
+void recomp_input_host_set_port0_filter(RecompInputPort0Filter filter)
+{
+    s_port0_filter = filter;
+}
 
 int recomp_input_host_last_sticks(short out[4])
 {
@@ -409,6 +415,20 @@ bool recomp_input_host_sample_port(unsigned port, RecompInputGamepad *gamepad)
         s_last_sticks[2] = gamepad->thumb_rx;
         s_last_sticks[3] = gamepad->thumb_ry;
         s_last_have = 1;
+        if (s_port0_filter) {
+            int16_t sticks[4] = { gamepad->thumb_lx, gamepad->thumb_ly,
+                                  gamepad->thumb_rx, gamepad->thumb_ry };
+            uint8_t analog[8] = { 0 };
+            for (i = 0; i < RECOMP_INPUT_ANALOG_BUTTON_COUNT && i < 8; i++)
+                analog[i] = gamepad->analog_buttons[i];
+            s_port0_filter(&gamepad->buttons, analog, sticks);
+            for (i = 0; i < RECOMP_INPUT_ANALOG_BUTTON_COUNT && i < 8; i++)
+                gamepad->analog_buttons[i] = analog[i];
+            gamepad->thumb_lx = sticks[0];
+            gamepad->thumb_ly = sticks[1];
+            gamepad->thumb_rx = sticks[2];
+            gamepad->thumb_ry = sticks[3];
+        }
     }
     return true;
 }

@@ -34,4 +34,12 @@ bool recomp_input_host_sample(RecompInputGamepad *gamepad);
  * sample. Safe from any thread; a torn read costs one stale axis. */
 int  recomp_input_host_last_sticks(short out[4]);
 
+/* A title's look at controller 1 before the title's own code reads it, and
+ * the chance to change it: buttons (XINPUT_GAMEPAD bits), the eight analog
+ * buttons and the sticks (lx, ly, rx, ry), scripts included. For a feature
+ * that takes the pad over for a while -- TimeSplitters 2's free camera
+ * reads it and hands the game a neutral pad. NULL removes it. */
+typedef void (*RecompInputPort0Filter)(uint16_t *buttons, uint8_t analog[8], int16_t sticks[4]);
+void recomp_input_host_set_port0_filter(RecompInputPort0Filter filter);
+
 #endif
