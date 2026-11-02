@@ -131,6 +131,9 @@ void hle_d3d8_interp_frame_end(void);
 /* The five-second report's line, and in-between frames shown so far. */
 void hle_d3d8_interp_report(void);
 unsigned long hle_d3d8_interp_presents(void);
+/* F12's burst (hle_d3d8.c): the in-between frames from the next swap on, up
+ * to 24, as <prefix>_i<swap>_<k>.bmp. Returns 0 when interpolation is off. */
+int  hle_d3d8_interp_dump_burst(const char *prefix);
 
 /* Screen copies, wrapped so frame interpolation draws them again. */
 HRESULT host_CopyBackBufferToTexture(IDirect3DTexture8 *dst);

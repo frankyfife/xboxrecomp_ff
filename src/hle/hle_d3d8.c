@@ -804,6 +804,7 @@ static int shadow_key_down(int vk)
 #define SHADOW_KEY_F9   VK_F9
 #define SHADOW_KEY_F10  VK_F10
 #define SHADOW_KEY_F11  VK_F11
+#define SHADOW_KEY_F12  VK_F12
 
 #else
 /* The pointer mode (above) is the Win32 window's; elsewhere a title's menus
@@ -2157,6 +2158,32 @@ static void shadow_dump_next_frame(void)
     g_dump_requested = 1;
 }
 
+/* F12: a burst of frames, for flicker a single picture cannot show. The next
+ * BURST_SWAPS frames go beside the executable as burst<n>_f<swap>.bmp and,
+ * with frame interpolation on, the in-between frames as
+ * burst<n>_i<swap>_<k>.bmp (in-between k before that swap). Writing a
+ * picture takes longer than the wait an in-between frame is drawn in, so
+ * then only every other frame is written, leaving the in-between frame
+ * before the next one its wait: frame N-1, in-between N, frame N+1, ... */
+#define BURST_SWAPS 24
+static int  g_burst_left, g_burst_every, g_burst_count;
+static char g_burst_prefix[1024];
+
+static void shadow_burst_start(void)
+{
+    char name[32];
+
+    if (g_burst_left > 0)
+        return;
+    snprintf(name, sizeof name, "burst%d", ++g_burst_count);
+    hle_d3d8_beside_exe(g_burst_prefix, sizeof g_burst_prefix, name);
+    g_burst_every = hle_d3d8_interp_dump_burst(g_burst_prefix) ? 2 : 1;
+    g_burst_left = BURST_SWAPS;
+    fprintf(stderr, "[HLE-D3D8] F12: the next %d frames to %s_*.bmp%s\n", BURST_SWAPS,
+            g_burst_prefix, g_burst_every > 1 ? ", every other one, with the in-between frames" : "");
+    fflush(stderr);
+}
+
 /* RECOMP_HLE_D3D8_BRIGHT=<n>: every n swaps, say how bright the finished frame
  * is, and how many draws made it.
  *
@@ -2390,6 +2417,18 @@ static void shadow_dump_frame(void)
     /* Asked for by hand: this frame, wherever the run has got to, whatever
      * the interval and the 24-file cap say, and beside the executable when
      * no prefix was given -- so pressing the key is the whole procedure. */
+    if (g_burst_left > 0) {
+        g_burst_left--;
+        if (g_burst_left % g_burst_every == 0) {
+            snprintf(path, sizeof path, "%s_f%05lu.bmp", g_burst_prefix, g_shadow_swaps);
+            if (dump_back_buffer(path) == 0)
+                fprintf(stderr, "[HLE-D3D8] burst frame %lu -> %s\n", g_shadow_swaps, path);
+        }
+        if (g_burst_left == 0) {
+            fprintf(stderr, "[HLE-D3D8] F12 burst done\n");
+            fflush(stderr);
+        }
+    }
     asked = g_dump_requested;
     g_dump_requested = 0;
     use = prefix;
@@ -3008,7 +3047,7 @@ void hle_set_frame_cap(const char *name)
 
 static void overlay_frame(void)
 {
-    static int configured, f9_was_down, f10_was_down, f11_was_down;
+    static int configured, f9_was_down, f10_was_down, f11_was_down, f12_was_down;
     static LARGE_INTEGER qpf, window_start;
     static unsigned window_frames;
     static unsigned long window_extra;
@@ -3042,6 +3081,16 @@ static void overlay_frame(void)
         shadow_dump_next_frame();
     }
     f11_was_down = f11;
+#ifdef SHADOW_KEY_F12
+    {
+        int f12 = shadow_key_down(SHADOW_KEY_F12);
+        if (f12 && !f12_was_down)
+            shadow_burst_start();
+        f12_was_down = f12;
+    }
+#else
+    (void)f12_was_down;
+#endif
     if (f9 && !f9_was_down)
         enabled = !enabled;
     if (g_overlay_set >= 0) {

@@ -133,6 +133,12 @@ slots fit and some are late, and are skipped.
 - `RECOMP_INTERP_DUMP=<prefix>` with `RECOMP_INTERP_DUMP_FROM=<swap>` writes
   in-between frames as BMPs. Beside `RECOMP_HLE_D3D8_DUMP_EVERY=1` from the same
   swap, they sit between the frames either side.
+- **F12** (Windows) writes a burst beside the executable: the next 24 frames,
+  every other one with interpolation on, as `burst<n>_f<swap>.bmp`, and the
+  in-between frames between them as `burst<n>_i<swap>_<k>.bmp` -- frame N-1,
+  in-between N, frame N+1 -- for a player to show flicker no single picture
+  can. Writing a picture costs more than an in-between frame's wait, which is
+  why the frames alternate.
 - `RECOMP_INTERP_DEBUG=1` prints the draws behind a frame held as a cut.
 - F9's overlay shows the game's frame rate and, with interpolation, what is
   shown.

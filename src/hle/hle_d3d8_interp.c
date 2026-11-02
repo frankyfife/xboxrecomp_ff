@@ -147,6 +147,16 @@ static double        g_matched_sum, g_redraw_ms_sum, g_redraw_ms_max;
 static double        g_alpha_sum, g_off_ms_sum, g_off_ms_max;
 static unsigned long g_redraws, g_matched_frames;
 
+int hle_d3d8_interp_dump_burst(const char *prefix)
+{
+    if (!g_on)
+        return 0;
+    g_dump_prefix = prefix;
+    g_dump_from = g_swaps + 1;
+    g_dumped = 0;
+    return 1;
+}
+
 unsigned long hle_d3d8_interp_presents(void)
 {
     return g_presents_total;
