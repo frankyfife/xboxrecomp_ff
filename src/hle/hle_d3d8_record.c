@@ -1808,8 +1808,31 @@ void host_vsh_set_constant(int first_reg, const float *data, int count)
     d3d8_vsh_set_constant(first_reg, data, count);
 }
 
+/* A declaration belongs to its program's handle, and a title may declare one
+ * handle more than one way in a frame: TimeSplitters 2 draws through 0x10004
+ * with 24- and 36-byte vertices. Frame interpolation's redraw keeps it in
+ * order with the draws; without it every draw on the handle was redrawn with
+ * the frame's last layout, and Siberia's frosted window panes, read with the
+ * wrong one, were missing from every in-between frame (blue glass, flicker). */
+typedef struct { DWORD handle; int count; D3D8VshInput inputs[16]; } dq_vs_declaration;
+
+static void op_vsh_declaration(const void *arg)
+{
+    const dq_vs_declaration *p = (const dq_vs_declaration *)arg;
+    host_vsh_set_declaration(p->handle, p->count ? p->inputs : NULL, p->count);
+}
+
 HRESULT host_vsh_set_declaration(DWORD handle, const D3D8VshInput *inputs, int count)
 {
+    if (hle_d3d8_interp_rec && count >= 0 && count <= 16 && (inputs || !count)) {
+        dq_vs_declaration p;
+        memset(&p, 0, sizeof p);
+        p.handle = handle;
+        p.count = count;
+        if (count)
+            memcpy(p.inputs, inputs, (size_t)count * sizeof *inputs);
+        hle_d3d8_interp_op(op_vsh_declaration, &p, sizeof p);
+    }
     if (g_cap)
         rec_vs_declaration(handle, inputs, count);
     return d3d8_vsh_set_declaration(handle, inputs, count);
