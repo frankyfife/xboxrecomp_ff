@@ -1223,9 +1223,49 @@ static RhiView *empty_stage_view(void)
     return view;
 }
 
+static void rebind_texture(IDirect3DBaseTexture8 *tex)
+{
+    DWORD stage;
+
+    for (stage = 0; stage < 4; stage++)
+        if (tex && g_cur_textures[stage] == tex) {
+            RhiView *srv = d3d8_base_srv(tex);
+            rhi_set_textures(stage, 1, &srv);
+        }
+}
+
+/* screen_filters = 0 (d3d8_display.h): whether this draw is one of the
+ * title's full-screen filters, a blend over the frame of a copy of the
+ * frame. TimeSplitters 2 softens its picture that way: the frame, shifted
+ * by a pixel, three times over itself at about a fifth each. */
+static BOOL screen_filter_left_out(void)
+{
+    static unsigned long left_out;
+    const DWORD *rs;
+    DWORD s;
+
+    if (d3d8_display_policy()->screen_filters)
+        return FALSE;
+    rs = d3d8_GetRenderStates();
+    if (!rs || !rs[D3DRS_ALPHABLENDENABLE])
+        return FALSE;
+    for (s = 0; s < 4; s++) {
+        IDirect3DBaseTexture8 *tex = g_cur_textures[s];
+        if (tex && IDirect3DBaseTexture8_GetType(tex) == D3DRTYPE_TEXTURE &&
+            ((D3D8Texture *)tex)->screen_copy_full) {
+            if (!left_out++)
+                fprintf(stderr, "D3D8: leaving out a full-screen filter over a copy of the "
+                        "frame (screen_filters = 0)\n");
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 static HRESULT __stdcall dev_SetTexture(IDirect3DDevice8 *self, DWORD Stage, IDirect3DBaseTexture8 *pTexture)
 {
     (void)self;
+    d3d8_rebind_texture = rebind_texture;
     g_d3d_settexture_count++;
     if (Stage >= 4) return E_INVALIDARG;
     g_cur_textures[Stage] = pTexture;
@@ -1627,6 +1667,7 @@ static HRESULT __stdcall dev_DrawPrimitive(IDirect3DDevice8 *self, D3DPRIMITIVET
 {
     (void)self;
     g_d3d_draw_count++;
+    if (screen_filter_left_out()) return S_OK;
     uint32_t topology;
     UINT vertex_count;
 
@@ -1651,6 +1692,7 @@ static HRESULT __stdcall dev_DrawIndexedPrimitive(IDirect3DDevice8 *self, D3DPRI
 {
     (void)self; (void)MinVertexIndex; (void)NumVertices;
     g_d3d_draw_count++;
+    if (screen_filter_left_out()) return S_OK;
     uint32_t topology;
     UINT index_count;
 
@@ -1700,6 +1742,7 @@ static HRESULT __stdcall dev_DrawPrimitiveUP(IDirect3DDevice8 *self, D3DPRIMITIV
 {
     (void)self;
     g_d3d_draw_count++;
+    if (screen_filter_left_out()) return S_OK;
     uint32_t topology;
     UINT vertex_count, vb_size, ring_offset;
     const void *draw_data = pVertexData;
@@ -1762,6 +1805,7 @@ static HRESULT __stdcall dev_DrawIndexedPrimitiveUP(IDirect3DDevice8 *self, D3DP
 {
     (void)self; (void)MinVertexIndex;
     g_d3d_draw_count++;
+    if (screen_filter_left_out()) return S_OK;
     uint32_t topology;
     UINT index_count, vb_size, ib_size;
     UINT vb_offset, ib_offset;

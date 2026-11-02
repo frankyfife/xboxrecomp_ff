@@ -46,6 +46,13 @@ typedef struct D3D8DisplayPolicy {
      * already filters linearly. 1 leaves every sampler as the title asked
      * for it. */
     UINT anisotropy;
+    /* RECOMP_SCREEN_FILTERS=0 (screen_filters): leave out the title's
+     * full-screen filters made from a copy of its own frame -- a blend of
+     * the frame over itself, shifted, for a soften or a blur. Only blended
+     * draws that sample a whole-frame copy are left out, so the frame
+     * underneath, which they were drawn over, is what is shown. On (1) by
+     * default: they are part of the title's look. */
+    int  screen_filters;
 } D3D8DisplayPolicy;
 
 const D3D8DisplayPolicy *d3d8_display_policy(void);

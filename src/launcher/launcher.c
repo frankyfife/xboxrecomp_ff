@@ -216,6 +216,12 @@ static void build_rows(void)
     r->kind  = ROW_INT; r->lo = 1; r->hi = 16; r->ival = &g_settings.anisotropy;
     r++;
 
+    r->label = "Screen filters";
+    r->help  = "The game's own blur or soften over the whole picture. Off is"
+               " sharper, above all at a resolution scale above 1.";
+    r->kind  = ROW_BOOL; r->ival = &g_settings.screen_filters;
+    r++;
+
     r->label = "Frame rate";
     r->help  = recomp_title_keeps_time()
              ? "Adaptive paces the game at 60, as the console did. This game keeps"

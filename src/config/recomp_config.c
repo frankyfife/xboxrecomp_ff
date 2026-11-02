@@ -297,6 +297,7 @@ void recomp_settings_defaults(RecompSettings *s)
     s->hor_plus_register = RECOMP_REGISTER_AUTO;
     snprintf(s->widescreen_2d, sizeof s->widescreen_2d, "auto");
     s->anisotropy        = 1;
+    s->screen_filters    = 1;
     s->fps_overlay       = 0;
     s->fullscreen        = 0;
     s->vrr               = 1;
@@ -367,6 +368,8 @@ int recomp_settings_read(const char *path, RecompSettings *s)
             snprintf(s->widescreen_2d, sizeof s->widescreen_2d, "%s", v);
         if ((v = from_table("anisotropy")) != NULL)
             s->anisotropy = clamp_int(atoi(v), 1, 16);
+        if ((v = from_table("screen_filters")) != NULL)
+            s->screen_filters = atoi(v) ? 1 : 0;
         if ((v = from_table("frame_cap")) != NULL)
             snprintf(s->frame_cap, sizeof s->frame_cap, "%s", v);
         if ((v = from_table("fps_overlay")) != NULL)
@@ -512,6 +515,11 @@ int recomp_settings_write(const char *path, const RecompSettings *s)
         "# is left alone, which wants no filtering.              [RECOMP_ANISO]\n"
         "anisotropy = %d\n"
         "\n"
+        "# The game's own full-screen filters drawn from a copy of its frame\n"
+        "# (a soften, a blur). 0 leaves them out: a sharper picture, which\n"
+        "# matters most at a resolution scale above 1.  [RECOMP_SCREEN_FILTERS]\n"
+        "screen_filters = %d\n"
+        "\n"
         "# Frame pacing: adaptive, 60, 30, or 0 for uncapped.  [RECOMP_FPS_CAP]\n"
         "# A game whose logic keeps time can also take more than 60, e.g. 120\n"
         "# or 144; any other game runs fast above 60, as it does uncapped.\n"
@@ -550,7 +558,7 @@ int recomp_settings_write(const char *path, const RecompSettings *s)
         "mouse_invert = %d\n",
         s->resolution_scale, s->widescreen, hor_plus, reg,
         s->widescreen_2d[0] ? s->widescreen_2d : "auto",
-        s->anisotropy, s->frame_cap[0] ? s->frame_cap : "adaptive", s->fps_overlay,
+        s->anisotropy, s->screen_filters ? 1 : 0, s->frame_cap[0] ? s->frame_cap : "adaptive", s->fps_overlay,
         s->fullscreen, s->vrr, s->frame_interp < 1 ? 1 : s->frame_interp,
         s->mouse_look ? 1 : 0,
         RECOMP_MOUSE_SENSITIVITY_MIN, RECOMP_MOUSE_SENSITIVITY_MAX,

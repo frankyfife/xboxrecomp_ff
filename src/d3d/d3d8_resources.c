@@ -1412,6 +1412,11 @@ static HRESULT __stdcall tex_GetSurfaceLevel(IDirect3DTexture8 *self, UINT Level
     D3D8Texture *tex = tex_from_iface(self);
     if (!ppSurface || Level >= tex->levels) return E_INVALIDARG;
 
+    /* A surface measures the image as the title's size; one rendered
+     * into stays that size from now on. */
+    if (tex->host_w)
+        d3d8_texture_host_size(tex, 0, 0);
+    tex->host_fixed = TRUE;
     *ppSurface = d3d8_surface_create(tex->image, Level, 0,
                                      tex_level_width(tex, Level),
                                      tex_level_height(tex, Level),
@@ -1433,6 +1438,10 @@ static HRESULT __stdcall tex_LockRect(IDirect3DTexture8 *self, UINT Level, D3DLO
     if (!pLockedRect || Level >= tex->levels) return E_INVALIDARG;
     if (tex->locked) return E_FAIL;
 
+    /* Unlock uploads the title's size. Not held there: a capture's replay
+     * fills a texture this way before the copy into it. */
+    if (tex->host_w)
+        d3d8_texture_host_size(tex, 0, 0);
     pLockedRect->Pitch = (INT)tex_level_pitch(tex, Level);
     pLockedRect->pBits = tex->sys_mem + tex_level_offset(tex, Level);
     tex->locked = TRUE;
@@ -1500,6 +1509,51 @@ static HRESULT __stdcall tex_UnlockRect(IDirect3DTexture8 *self, UINT Level)
                           tex->sys_mem + tex_level_offset(tex, Level),
                           tex_level_pitch(tex, Level), tex->palette);
     return S_OK;
+}
+
+void (*d3d8_rebind_texture)(IDirect3DBaseTexture8 *tex);
+
+int d3d8_texture_host_size(D3D8Texture *tex, UINT w, UINT h)
+{
+    RhiImage *image;
+    RhiView *srv;
+    RhiImageDesc td;
+    RhiViewDesc srvd;
+
+    if (!w || !h) {
+        w = tex->width;
+        h = tex->height;
+    }
+    if (w == (tex->host_w ? tex->host_w : tex->width) &&
+        h == (tex->host_h ? tex->host_h : tex->height))
+        return 1;
+    if (!rhi_device_ready() || !tex->image || !tex->srv || tex->levels != 1)
+        return 0;
+
+    rhi_image_get_desc(tex->image, &td);
+    td.width = w;
+    td.height = h;
+    image = rhi_image_create(&td, NULL);
+    if (!image)
+        return 0;
+    memset(&srvd, 0, sizeof srvd);
+    srvd.format = tex->host_format;
+    srvd.dim = RHI_VIEW_DIM_2D;
+    srvd.mip_count = 1;
+    srv = rhi_view_create(image, RHI_VIEW_SAMPLED, &srvd);
+    if (!srv) {
+        rhi_image_destroy(image);
+        return 0;
+    }
+    rhi_view_destroy(tex->srv);
+    rhi_image_destroy(tex->image);
+    tex->image = image;
+    tex->srv = srv;
+    tex->host_w = (w == tex->width && h == tex->height) ? 0 : w;
+    tex->host_h = tex->host_w ? h : 0;
+    if (d3d8_rebind_texture)
+        d3d8_rebind_texture((IDirect3DBaseTexture8 *)&tex->iface);
+    return 1;
 }
 
 static const IDirect3DTexture8Vtbl g_tex_vtbl = {

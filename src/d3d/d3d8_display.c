@@ -62,6 +62,12 @@ const D3D8DisplayPolicy *d3d8_display_policy(void)
             g_policy.anisotropy = (UINT)a;
         }
 
+        g_policy.screen_filters = recomp_config_bool("RECOMP_SCREEN_FILTERS",
+                                                     "screen_filters", 1);
+        if (!g_policy.screen_filters)
+            fprintf(stderr, "D3D8 display: the title's full-screen filters over a copy of "
+                    "its frame are left out (screen_filters = 0)\n");
+
         if (g_policy.scale > 1)
             fprintf(stderr, "D3D8 display: supersampling %ux, box filtered at present\n",
                     g_policy.scale);

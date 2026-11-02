@@ -231,6 +231,7 @@ typedef struct RecompSettings {
     int  hor_plus_register;     /* RECOMP_REGISTER_AUTO, or an override: 0..191 */
     char widescreen_2d[16];     /* "auto" or "centre": where 2D goes in widescreen */
     int  anisotropy;            /* 1..16 */
+    int  screen_filters;        /* 0: leave out filters over a copy of the frame */
     char frame_cap[16];         /* "adaptive", "60", "30", "0", or above 60 */
     int  fps_overlay;           /* 0 or 1 */
     int  fullscreen;            /* 0 or 1: borderless, on the window's monitor */

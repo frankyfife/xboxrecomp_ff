@@ -213,12 +213,39 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     RhiViewport vp;
     float blend_factor[4] = { 1, 1, 1, 1 };
     UINT back_w = d3d8_GetBackBufferWidth(), back_h = d3d8_GetBackBufferHeight();
+    UINT tex_w, tex_h;
     void *mapped;
 
     if (!rhi_device_ready() || !tex || !tex->image || !back_w || !back_h)
         return E_INVALIDARG;
     if (!create())
         return E_FAIL;
+
+    /* The whole frame into a texture of the title's screen size: the copy
+     * is the frame itself, so it is held at the frame's size. Kept at the
+     * title's size, at RECOMP_RES_SCALE 5 it took one scene pixel in 25,
+     * unfiltered, and TimeSplitters 2 blends that over its picture three
+     * times a frame: a sharp picture under a coarse, shimmering one. Draws
+     * read it through normalised coordinates (a linear texture's texel
+     * scale comes from width and height, which do not change), so to the
+     * title it is the same texture. A texture of any other size is a
+     * deliberate reduction -- a glow's source -- and stays as it is; so
+     * does one the title has locked or rendered into (host_fixed). */
+    if (!src && tex->levels == 1 && !tex->host_fixed &&
+        tex->width == d3d8_GetGuestWidth() && tex->height == d3d8_GetGuestHeight() &&
+        (back_w != tex->width || back_h != tex->height) &&
+        d3d8_texture_host_size(tex, back_w, back_h)) {
+        static int said;
+        if (!said++)
+            fprintf(stderr, "D3D8 screen copy: a whole-frame copy (%ux%u) is held at the "
+                    "frame's size, %ux%u\n", tex->width, tex->height, back_w, back_h);
+    } else if (src && tex->host_w) {
+        /* A rectangle is placed in the title's pixels. */
+        d3d8_texture_host_size(tex, 0, 0);
+        tex->host_fixed = TRUE;
+    }
+    tex_w = tex->host_w ? tex->host_w : tex->width;
+    tex_h = tex->host_h ? tex->host_h : tex->height;
 
     dst_image = tex->image;
     memset(&rtvd, 0, sizeof rtvd);
@@ -237,10 +264,10 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     probe_source(&saved, tex, back_w, back_h);
 
     vp.x = vp.y = 0.0f;
-    vp.width = (float)tex->width;
-    vp.height = (float)tex->height;
-    c.scale_x = tex->width ? (float)back_w / (float)tex->width : 1.0f;
-    c.scale_y = tex->height ? (float)back_h / (float)tex->height : 1.0f;
+    vp.width = (float)tex_w;
+    vp.height = (float)tex_h;
+    c.scale_x = tex_w ? (float)back_w / (float)tex_w : 1.0f;
+    c.scale_y = tex_h ? (float)back_h / (float)tex_h : 1.0f;
     c.off_x = c.off_y = 0.0f;
     if (src) {
         /* The rectangle is in the title's pixels and the frame may be
@@ -306,6 +333,7 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     /* A draw sampling this is re-presenting the frame, and has to cover
      * the whole of it; see d3d8_draw_escapes_squeeze. */
     tex->screen_copy = TRUE;
+    tex->screen_copy_full = src == NULL;
     return S_OK;
 }
 

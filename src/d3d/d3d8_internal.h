@@ -182,7 +182,22 @@ typedef struct D3D8Texture {
     BOOL                    dirty;
     UINT                    palette;    /* Palette index (texture stage) this P8 texture bakes */
     BOOL                    screen_copy; /* the frame was copied into it (d3d8_screencopy.c) */
+    BOOL                    screen_copy_full; /* ... the whole frame, last time */
+    /* The host image's size when it is not width x height: a texture the
+     * title copies its whole screen into is held at the scene's size, so
+     * the copy is not a guest-sized sample of a supersampled frame
+     * (d3d8_texture_host_size). 0 when the image is the title's size. */
+    UINT                    host_w, host_h;
+    BOOL                    host_fixed;  /* locked or rendered into: stays the title's size */
 } D3D8Texture;
+
+/* Gives a 2D texture's host image another size (0, 0: its own), keeping
+ * width and height -- what the title sees -- as they are. Contents are
+ * lost. Returns 0 if it cannot. */
+int d3d8_texture_host_size(D3D8Texture *tex, UINT w, UINT h);
+/* Puts a texture's new view on every stage it is bound to. A pointer,
+ * set by the device, so the format-layer tests link without one. */
+extern void (*d3d8_rebind_texture)(IDirect3DBaseTexture8 *tex);
 
 typedef struct D3D8Surface {
     IDirect3DSurface8       iface;

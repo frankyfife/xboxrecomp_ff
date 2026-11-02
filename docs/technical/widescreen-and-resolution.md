@@ -266,6 +266,20 @@ the backend already rejects a mismatch. Then teach the texture cache that a scal
 entry is a render target and re-create it at guest size if guest bytes ever arrive
 (the one malformed chunk the earlier prototype saw at 2x).
 
+**Done for whole-frame screen copies (Nov 2026).** A texture of the guest's
+screen size that the title copies its whole frame into (`CopyRects` from the
+back buffer, `d3d8_screencopy.c`) gets a host image of the scene's size on
+its first copy (`d3d8_texture_host_size`); `width`/`height` stay the title's,
+so linear texel scaling and everything measuring the texture are unchanged.
+Before, at scale 5 the copy took one scene pixel in 25, unfiltered, and
+TimeSplitters 2, which blends its frame shifted by a pixel over itself three
+times as a soften, showed a sharp picture under a coarse one. A texture that
+becomes a render target (`GetSurfaceLevel`) or is copied into by rectangle
+goes back to the title's size for good; smaller copy targets (a glow's
+deliberate reduction) are untouched. `screen_filters = 0`
+(`RECOMP_SCREEN_FILTERS`) leaves out every blended draw that samples a
+whole-frame copy.
+
 Whether a title's own render-to-texture passes should scale: **yes, by default**,
 because leaving them at guest size makes every reflection and composed pass a
 magnified 640x480 patch inside a sharp frame, which looks worse than not scaling
