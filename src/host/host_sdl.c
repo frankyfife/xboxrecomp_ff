@@ -705,6 +705,17 @@ static void dispatch_event(const SDL_Event *e)
         if (e->button.windowID == w->id && w->cb.on_mouse_button)
             w->cb.on_mouse_button(w->cb.user, e->button.button, e->button.down ? 1 : 0);
         break;
+    case SDL_EVENT_MOUSE_WHEEL:
+        /* As buttons 6 (away from the user) and 7, one press per notch:
+         * HOST_MOUSE_WHEEL_UP/DOWN in host.h. */
+        if (e->wheel.windowID == w->id && w->cb.on_mouse_button && e->wheel.integer_y) {
+            int n = e->wheel.integer_y;
+            if (e->wheel.direction == SDL_MOUSEWHEEL_FLIPPED)
+                n = -n;
+            for (; n > 0; n--) w->cb.on_mouse_button(w->cb.user, HOST_MOUSE_WHEEL_UP, 1);
+            for (; n < 0; n++) w->cb.on_mouse_button(w->cb.user, HOST_MOUSE_WHEEL_DOWN, 1);
+        }
+        break;
     case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
     case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
         /* Also what the green button and the system's own fullscreen

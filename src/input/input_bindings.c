@@ -143,7 +143,7 @@ static const char *const PAD_BUTTONS[PB_COUNT] = {
 /* "mouse:" sources, in RECOMP_MOUSE_* order. x1 and x2 are the side buttons
  * (back and forward). */
 static const char *const MOUSE_BUTTONS[RECOMP_MOUSE_BUTTONS] = {
-    "left", "right", "middle", "x1", "x2"
+    "left", "right", "middle", "x1", "x2", "wheelup", "wheeldown"
 };
 
 typedef struct {
@@ -938,6 +938,24 @@ void recomp_mouse_release(void)
     MOUSE_TAKE(&g_mouse_dy);
 }
 
+/* The wheel's notches, not yet played as presses, per direction (0 up, 1
+ * down); at most WHEEL_QUEUE, so a fast spin does not queue a minute of
+ * weapon changes. */
+#define WHEEL_QUEUE    4
+#define WHEEL_PRESS_US 80000ull
+#define WHEEL_GAP_US   40000ull
+static volatile long g_wheel_pending[2];
+
+void recomp_mouse_wheel(int notches)
+{
+    int dir = notches > 0 ? 0 : 1;
+    long n = notches > 0 ? notches : -notches;
+
+    while (n-- > 0)
+        if (g_wheel_pending[dir] < WHEEL_QUEUE)
+            MOUSE_ADD(&g_wheel_pending[dir], 1);
+}
+
 static unsigned long long now_us(void)
 {
 #if defined(_WIN32)
@@ -955,6 +973,27 @@ static unsigned long long now_us(void)
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (unsigned long long)ts.tv_sec * 1000000ull + (unsigned long long)ts.tv_nsec / 1000ull;
 #endif
+}
+
+/* A wheel direction reads as held for WHEEL_PRESS_US per notch, then up for
+ * WHEEL_GAP_US before the next: by the clock, not by how often it is asked,
+ * since a sample reads every control and several may be bound to it. */
+static int wheel_held(int dir)
+{
+    static unsigned long long until[2], gap_until[2];
+    unsigned long long now = now_us();
+
+    if (now < until[dir])
+        return 1;
+    if (now < gap_until[dir])
+        return 0;
+    if (g_wheel_pending[dir] > 0) {
+        MOUSE_ADD(&g_wheel_pending[dir], -1);
+        until[dir] = now + WHEEL_PRESS_US;
+        gap_until[dir] = until[dir] + WHEEL_GAP_US;
+        return 1;
+    }
+    return 0;
 }
 
 /* ---- native mouse aim (input_bindings.h) */
@@ -1106,6 +1145,8 @@ static int source_magnitude(const Source *s, KeyCache *kc,
     case SRC_KEY:
         return key_down(kc, s->arg) ? 255 : 0;
     case SRC_MOUSE:
+        if (s->arg == RECOMP_MOUSE_WHEEL_UP || s->arg == RECOMP_MOUSE_WHEEL_DOWN)
+            return wheel_held(s->arg - RECOMP_MOUSE_WHEEL_UP) ? 255 : 0;
         return (g_mouse_held & (1L << s->arg)) ? 255 : 0;
     case SRC_PAD_BUTTON:
         if (!have_pad)

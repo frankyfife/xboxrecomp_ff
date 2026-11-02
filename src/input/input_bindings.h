@@ -60,8 +60,15 @@ void recomp_bindings_rumble(unsigned port, unsigned short low, unsigned short hi
 enum {
     RECOMP_MOUSE_LEFT, RECOMP_MOUSE_RIGHT, RECOMP_MOUSE_MIDDLE,
     RECOMP_MOUSE_X1, RECOMP_MOUSE_X2,
+    RECOMP_MOUSE_WHEEL_UP, RECOMP_MOUSE_WHEEL_DOWN,  /* read as presses, see recomp_mouse_wheel */
     RECOMP_MOUSE_BUTTONS
 };
+
+/* The wheel turned by `notches` (positive away from the user). Each notch is
+ * played to the title as one press of mouse:wheelup or mouse:wheeldown, long
+ * enough for a title polling once a frame to see it and with a gap after it,
+ * so that two notches are two presses: weapon switching on the wheel. */
+void recomp_mouse_wheel(int notches);
 
 /* Mouse look is on and controller 1 reads something: the window should
  * take the pointer (hide it and keep it inside) while it has the focus. */

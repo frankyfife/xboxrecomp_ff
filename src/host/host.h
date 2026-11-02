@@ -50,6 +50,10 @@ void recomp_host_call_main(void (*fn)(void *arg), void *arg);
 
 typedef struct host_window host_window;
 
+/* on_mouse_button's numbers for the wheel, past SDL's buttons. */
+#define HOST_MOUSE_WHEEL_UP   6
+#define HOST_MOUSE_WHEEL_DOWN 7
+
 /* Keys the shell itself answers; everything else is the input bindings'. */
 enum {
     HOST_KEY_F9 = 1,        /* frame-rate overlay */
@@ -73,8 +77,9 @@ typedef struct {
     /* The mouse, while the window has the focus. Motion is reported only
      * while the window holds the pointer (host_window_set_relative_mouse),
      * as relative counts, x right and y down. Buttons are SDL's numbers:
-     * 1 left, 2 middle, 3 right, 4 and 5 the side buttons. A window that
-     * loses the focus reports every button up. Main thread. */
+     * 1 left, 2 middle, 3 right, 4 and 5 the side buttons, and the wheel as
+     * HOST_MOUSE_WHEEL_UP/DOWN, one down (and no up) per notch. A window
+     * that loses the focus reports every button up. Main thread. */
     void (*on_mouse_motion)(void *user, float dx, float dy);
     void (*on_mouse_button)(void *user, int button, int down);
     void *user;

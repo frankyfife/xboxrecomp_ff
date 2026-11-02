@@ -333,12 +333,12 @@ static void shadow_set_fullscreen(HWND hwnd, int on);
  *
  * Its buttons go to the bindings as they arrive (mouse: sources). With
  * mouse look on (recomp_mouse_look) the window also takes the pointer while
- * it is in front: hidden, held inside the client area, and its motion read
- * as raw input, which keeps coming at the edge of the screen and has no
- * pointer acceleration in it. Switching away gives the pointer back; a
- * click in the window, or switching back to it, takes it again. The click
- * that takes it is not passed on, so it does not also fire. All of this
- * runs on the window's own thread. */
+ * it is in front: hidden, held at the middle of the client area, and its
+ * motion read as raw input, which keeps coming at the edge of the screen and
+ * has no pointer acceleration in it. Switching away, or Esc, gives the
+ * pointer back; a click in the window, or switching back to it, takes it
+ * again. The click that takes it is not passed on, so it does not also
+ * fire. All of this runs on the window's own thread. */
 static int  g_mouse_look = -1;          /* -1 not asked yet */
 static int  g_mouse_captured;
 static UINT g_mouse_down;               /* buttons this window saw go down */
@@ -355,19 +355,42 @@ static int shadow_mouse_look(void)
     return g_mouse_look;
 }
 
+/* Held in a few pixels at the middle of the client area rather than the
+ * whole of it: the pointer is hidden and only its raw motion counts, so where
+ * it sits does not matter, and from the middle it can never reach the window's
+ * edge, its title bar or another monitor, where a click would land elsewhere.
+ * Windows drops a clip on its own now and then (a notification, the Start
+ * menu, a UAC prompt), so shadow_mouse_hold puts it back on every movement. */
 static void shadow_mouse_clip(HWND hwnd)
 {
     RECT r;
-    POINT a, b;
+    POINT c;
 
     GetClientRect(hwnd, &r);
-    a.x = r.left;  a.y = r.top;
-    b.x = r.right; b.y = r.bottom;
-    ClientToScreen(hwnd, &a);
-    ClientToScreen(hwnd, &b);
-    r.left = a.x;  r.top = a.y;
-    r.right = b.x; r.bottom = b.y;
+    c.x = (r.left + r.right) / 2;
+    c.y = (r.top + r.bottom) / 2;
+    ClientToScreen(hwnd, &c);
+    r.left = c.x - 2;  r.top = c.y - 2;
+    r.right = c.x + 2; r.bottom = c.y + 2;
     ClipCursor(&r);
+}
+
+/* While the pointer is taken: still in front, and still clipped. */
+static int shadow_mouse_hold(HWND hwnd)
+{
+    RECT want, have;
+    POINT c;
+
+    if (GetForegroundWindow() != hwnd)
+        return 0;
+    GetClientRect(hwnd, &want);
+    c.x = (want.left + want.right) / 2;
+    c.y = (want.top + want.bottom) / 2;
+    ClientToScreen(hwnd, &c);
+    if (!GetClipCursor(&have) || have.left != c.x - 2 || have.top != c.y - 2 ||
+        have.right != c.x + 2 || have.bottom != c.y + 2)
+        shadow_mouse_clip(hwnd);
+    return 1;
 }
 
 static void shadow_mouse_capture(HWND hwnd, int on)
@@ -434,13 +457,17 @@ static int shadow_mouse_button(HWND hwnd, UINT msg, WPARAM wp)
     return 1;
 }
 
-static void shadow_mouse_raw(LPARAM lp)
+static void shadow_mouse_raw(HWND hwnd, LPARAM lp)
 {
     RAWINPUT ri;
     UINT size = sizeof ri;
 
     if (!g_mouse_captured)
         return;
+    if (!shadow_mouse_hold(hwnd)) {
+        shadow_mouse_capture(hwnd, 0);  /* lost the front without a message */
+        return;
+    }
     if (GetRawInputData((HRAWINPUT)lp, RID_INPUT, &ri, &size, sizeof(RAWINPUTHEADER)) ==
             (UINT)-1 || ri.header.dwType != RIM_TYPEMOUSE)
         return;
@@ -459,8 +486,27 @@ static LRESULT CALLBACK shadow_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         return msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP ? TRUE : 0;
     switch (msg) {
     case WM_INPUT:
-        shadow_mouse_raw(lp);
+        shadow_mouse_raw(hwnd, lp);
         break;                          /* DefWindowProc cleans up after it */
+    case WM_MOUSEWHEEL: {
+        /* In notches of WHEEL_DELTA; a fine-grained wheel's parts add up. */
+        static int rest;
+        int n;
+
+        rest += GET_WHEEL_DELTA_WPARAM(wp);
+        n = rest / WHEEL_DELTA;
+        rest -= n * WHEEL_DELTA;
+        if (n)
+            recomp_mouse_wheel(n);
+        return 0;
+    }
+    case WM_KEYDOWN:
+        /* Esc gives the pointer back, to leave the window without Alt+Tab; a
+         * click in it takes it again. Esc is not one of the console's keys
+         * and has no binding by default, so it is passed on as well. */
+        if (wp == VK_ESCAPE && g_mouse_captured)
+            shadow_mouse_capture(hwnd, 0);
+        break;
     case WM_ACTIVATE:
         /* Switched to by keyboard: take the pointer now. Clicked to the
          * front: on the click, if it lands in the window (shadow_mouse_button)
@@ -778,6 +824,8 @@ static void shadow_host_mouse_button(void *user, int button, int down)
     case 3: recomp_mouse_button(RECOMP_MOUSE_RIGHT, down);  break;
     case 4: recomp_mouse_button(RECOMP_MOUSE_X1, down);     break;
     case 5: recomp_mouse_button(RECOMP_MOUSE_X2, down);     break;
+    case HOST_MOUSE_WHEEL_UP:   if (down) recomp_mouse_wheel(1);  break;
+    case HOST_MOUSE_WHEEL_DOWN: if (down) recomp_mouse_wheel(-1); break;
     default: break;
     }
 }
@@ -2251,6 +2299,7 @@ static void shadow_dump_frame(void)
     static ULONGLONG next_ms;
     static char ring[24][512];
     static char asked_prefix[1024];
+    const char *use;
     int asked;
     char path[512];
 
@@ -2299,9 +2348,13 @@ static void shadow_dump_frame(void)
      * no prefix was given -- so pressing the key is the whole procedure. */
     asked = g_dump_requested;
     g_dump_requested = 0;
+    use = prefix;
     if (asked && (!prefix || !*prefix)) {
+        /* Only for this one: written into `prefix`, which is static, it
+         * switched the interval dumps on for the rest of the run, a 23 MB
+         * picture every 300 swaps after one press of F11. */
         hle_d3d8_beside_exe(asked_prefix, sizeof asked_prefix, "frame");
-        prefix = asked_prefix;
+        use = asked_prefix;
     }
     if (!asked) {
         if (!prefix || !*prefix || g_shadow_swaps < from_swap)
@@ -2331,11 +2384,11 @@ static void shadow_dump_frame(void)
 
         if (slot[0])
             remove(slot);
-        snprintf(path, sizeof path, "%s_s%08lu.bmp", prefix, g_shadow_swaps);
+        snprintf(path, sizeof path, "%s_s%08lu.bmp", use, g_shadow_swaps);
         snprintf(slot, sizeof ring[0], "%s", path);
         written++;
     } else {
-        snprintf(path, sizeof path, "%s%03d.bmp", prefix, written++);
+        snprintf(path, sizeof path, "%s%03d.bmp", use, written++);
     }
     if (dump_back_buffer(path) == 0)
         fprintf(stderr, "[HLE-D3D8] shadow frame %lu -> %s\n", g_shadow_swaps, path);
