@@ -882,6 +882,11 @@ void recomp_audio_output_set_reverb(const RecompI3dl2 *room)
     }
 }
 
+uint32_t recomp_audio_output_device_channels(void)
+{
+    return g_out_channels;
+}
+
 void recomp_audio_output_clear_mix(uint32_t slot)
 {
     if (slot >= VOICE_COUNT)

@@ -114,6 +114,10 @@ typedef struct RecompAudioMix {
 void recomp_audio_output_set_mix(uint32_t slot, const RecompAudioMix *mix);
 void recomp_audio_output_clear_mix(uint32_t slot);
 
+/* The output device's channel count (2 stereo, 6 for 5.1), 0 while no
+   device is open. */
+uint32_t recomp_audio_output_device_channels(void);
+
 /* The room every voice's reverb send feeds: DSI3DL2LISTENER, which is also
    XAudio2's I3DL2 reverb description without its wet/dry mix. NULL, or a
    room of -10000 and below, is no reverb. */

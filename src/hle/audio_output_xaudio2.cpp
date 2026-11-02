@@ -705,6 +705,11 @@ extern "C" void recomp_audio_output_set_reverb(const RecompI3dl2 *room)
     reverb_voice->SetVolume(1.0f);
 }
 
+extern "C" uint32_t recomp_audio_output_device_channels(void)
+{
+    return master ? master_channels : 0u;
+}
+
 extern "C" void recomp_audio_output_clear_mix(uint32_t slot)
 {
     /* The slot's next voice gets the default mapping and the submitted rate.

@@ -48,8 +48,15 @@
  *     are a constant-power pan from where the source is relative to the
  *     listener's right. Left/right placement is right; the console's head
  *     shadowing, interaural delay and front/back coloration are not there.
- *   - The rear crosstalk bins are silent, as the XDK makes them when the
- *     console is not in surround mode.
+ *   - Surround. On a device with four or more channels (a 5.1 receiver),
+ *     the console is taken to be in surround mode (Dolby Digital): a 3D
+ *     voice's level is shared between the front and rear crosstalk bins by
+ *     where the source is relative to the listener's front, constant power,
+ *     as the ears share left and right. On a stereo device the rear bins
+ *     are silent, as the XDK makes them when the console is not in
+ *     surround mode. surround = 0 or 1 (RECOMP_SURROUND) overrides; auto,
+ *     the default, follows the device. 2D voices go where their mix bins
+ *     say either way.
  *   - Reverb (I3DL2, bin 10) and the effect sends (FXSEND, 11+) feed the DSP's
  *     effects, which are not run. Those bins are left out of the mix; a voice
  *     heard only through them is played on the front speakers instead, so it
@@ -184,6 +191,29 @@ static int enabled(void)
     static int on = -1;
     if (on < 0)
         on = xbox_EnvSwitch("RECOMP_DS3D", 1);
+    return on;
+}
+
+/* Surround mode (above): RECOMP_SURROUND / surround, auto by default. */
+extern const char *recomp_config_lookup(const char *env_name, const char *key);
+
+static int surround(void)
+{
+    static int setting = -2, said;
+    int on;
+
+    if (setting == -2) {
+        const char *v = recomp_config_lookup("RECOMP_SURROUND", "surround");
+        setting = (v && v[0] == '0') ? 0 : (v && v[0] == '1') ? 1 : -1;
+    }
+    on = setting >= 0 ? setting : recomp_audio_output_device_channels() >= 4u;
+    if (!said && recomp_audio_output_device_channels()) {
+        said = 1;
+        fprintf(stderr, "[DS3D] 3D sound in %s (%u-channel device%s)\n",
+                on ? "surround: front and rear speakers" : "stereo: front speakers only",
+                recomp_audio_output_device_channels(),
+                setting >= 0 ? ", set by surround" : "");
+    }
     return on;
 }
 
@@ -434,6 +464,24 @@ int hle_ds3d_mix(uint32_t key, uint32_t channels, int32_t voice_volume, int forc
             ear_right = sinf(angle) * 1.41421356f;
             if (ear_left > 1.0f) ear_left = 1.0f;
             if (ear_right > 1.0f) ear_right = 1.0f;
+        }
+        if (surround()) {
+            /* Front and back the same way, along the listener's front. */
+            Vec3 f = g_listener.front;
+            float fl = len3(f), ahead = fl > 0.0f ? dot3(unit, f) / fl : 0.0f;
+            float angle, gf, gr;
+            /* Inside the source's minimum distance its direction means
+             * little and it fades to both: TimeSplitters 2's own gunshot,
+             * 0.1 m behind the camera, played from the rear speakers only. */
+            if (b->min_distance > 0.0f && distance < b->min_distance)
+                ahead *= distance / b->min_distance;
+            if (ahead > 1.0f) ahead = 1.0f;
+            if (ahead < -1.0f) ahead = -1.0f;
+            angle = (1.0f - ahead) * 0.78539816f;        /* 0 ahead .. pi/2 behind */
+            gf = cosf(angle) * 1.41421356f;
+            gr = sinf(angle) * 1.41421356f;
+            front = gf >= 1.0f ? 0 : gf > 0.0001f ? (int32_t)(2000.0f * log10f(gf)) : -10000;
+            rear = gr >= 1.0f ? 0 : gr > 0.0001f ? (int32_t)(2000.0f * log10f(gr)) : -10000;
         }
     }
 
