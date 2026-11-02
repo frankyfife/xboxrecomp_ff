@@ -440,6 +440,21 @@ static int texels_changed(texture_entry *e, const texture_layout *t,
     return 1;
 }
 
+/* xbox_HleSetTextureFixup: a title's chance to correct a texture's texels in
+ * the copy the host is given, never in guest memory -- for art the disc got
+ * wrong (TimeSplitters 2's pause menu draws its button glyphs from an atlas
+ * whose A and Y are stored upside down). Called for each level of each
+ * upload with the guest format and size, the level, and the host's bits. */
+typedef void (*XboxHleTextureFixup)(uint32_t fmt, uint32_t width, uint32_t height,
+                                    uint32_t level, uint8_t *bits, uint32_t pitch,
+                                    uint32_t rows);
+static XboxHleTextureFixup g_texture_fixup;
+
+void xbox_HleSetTextureFixup(XboxHleTextureFixup fixup)
+{
+    g_texture_fixup = fixup;
+}
+
 static void upload(IDirect3DTexture8 *host, const texture_layout *t)
 {
     const uint8_t *src = (const uint8_t *)HLE_PTR(CONTIG_BASE + t->phys);
@@ -461,6 +476,8 @@ static void upload(IDirect3DTexture8 *host, const texture_layout *t)
             memcpy(lr.pBits, src, (size_t)pitch * rows);
             src += (size_t)pitch * rows;
         }
+        if (g_texture_fixup)
+            g_texture_fixup(t->fmt, w, h, l, (uint8_t *)lr.pBits, (uint32_t)lr.Pitch, rows);
         host_UnlockRect(host, l);
     }
 }
