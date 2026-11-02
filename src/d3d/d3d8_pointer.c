@@ -36,6 +36,9 @@ static struct {
 
 static volatile int   g_shown;
 static volatile float g_gx, g_gy;
+/* Where the last present put the picture, in swap chain pixels, for the way
+ * back from a window position (xbox_D3D8WindowToGuest). */
+static volatile unsigned g_pic_x, g_pic_y, g_pic_w, g_pic_h, g_out_w, g_out_h;
 
 typedef struct { float x, y, w, h; float px, pad0, pad1, pad2; } PointerConstants;
 
@@ -150,6 +153,9 @@ void d3d8_pointer_present(RhiView *out, unsigned width, unsigned height,
     UINT guest_w = d3d8_GetGuestWidth(), guest_h = d3d8_GetGuestHeight();
     void *mapped;
 
+    g_pic_x = pic_x; g_pic_y = pic_y; g_pic_w = pic_w; g_pic_h = pic_h;
+    g_out_w = width; g_out_h = height;
+
     {
         /* RECOMP_D3D8_POINTER_TEST=<x>,<y>: shown there, for a look at it
          * through d3d8_replay --present. */
@@ -208,6 +214,23 @@ void d3d8_pointer_present(RhiView *out, unsigned width, unsigned height,
     rhi_draw(4, 0);
 restore:
     rhi_output_restore(&saved);
+}
+
+int xbox_D3D8WindowToGuest(float x, float y, float client_w, float client_h,
+                           float *gx, float *gy)
+{
+    UINT guest_w = d3d8_GetGuestWidth(), guest_h = d3d8_GetGuestHeight();
+    float k, sx, sy;
+
+    if (!g_pic_h || !g_out_w || !g_out_h || !guest_w || !guest_h ||
+        client_w <= 0.0f || client_h <= 0.0f)
+        return 0;
+    sx = x * (float)g_out_w / client_w;             /* window to swap chain pixels */
+    sy = y * (float)g_out_h / client_h;
+    k = (float)g_pic_h / (float)guest_h;
+    *gx = (float)guest_w * 0.5f + (sx - ((float)g_pic_x + (float)g_pic_w * 0.5f)) / k;
+    *gy = (sy - (float)g_pic_y) / k;
+    return 1;
 }
 
 void d3d8_pointer_shutdown(void)

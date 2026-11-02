@@ -342,6 +342,12 @@ static void shadow_set_fullscreen(HWND hwnd, int on);
 static int  g_mouse_look = -1;          /* -1 not asked yet */
 static int  g_mouse_captured;
 static UINT g_mouse_down;               /* buttons this window saw go down */
+/* xbox_HleSetPointerMode: a title's menu is up and is pointed at. The pointer
+ * is not taken then, it moves over the window as Windows moves it, hidden
+ * over the picture (the title's own is drawn there), and a click is a click.
+ * Set from the title's thread, acted on by the window's (WM_APP_POINTER). */
+static volatile int g_pointer_mode;
+#define WM_APP_POINTER (WM_APP + 0x51)
 
 static int shadow_mouse_look(void)
 {
@@ -438,7 +444,7 @@ static int shadow_mouse_button(HWND hwnd, UINT msg, WPARAM wp)
     }
     down = msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN ||
            msg == WM_MBUTTONDOWN || msg == WM_XBUTTONDOWN;
-    if (down && shadow_mouse_look() && !g_mouse_captured) {
+    if (down && shadow_mouse_look() && !g_mouse_captured && !g_pointer_mode) {
         shadow_mouse_capture(hwnd, 1);
         return 1;
     }
@@ -480,6 +486,29 @@ static void shadow_mouse_raw(HWND hwnd, LPARAM lp)
         recomp_mouse_move((float)ri.data.mouse.lLastX, (float)ri.data.mouse.lLastY);
 }
 
+void xbox_HleSetPointerMode(int on)
+{
+    on = on ? 1 : 0;
+    if (on == g_pointer_mode)
+        return;
+    g_pointer_mode = on;
+    if (g_shadow_hwnd && shadow_mouse_look())
+        PostMessageA(g_shadow_hwnd, WM_APP_POINTER, (WPARAM)on, 0);
+}
+
+int xbox_HlePointerGuest(float *gx, float *gy)
+{
+    POINT p;
+    RECT r;
+
+    if (!g_shadow_hwnd || !g_pointer_mode || GetForegroundWindow() != g_shadow_hwnd ||
+        !GetCursorPos(&p) || !ScreenToClient(g_shadow_hwnd, &p) ||
+        !GetClientRect(g_shadow_hwnd, &r) || r.right <= 0 || r.bottom <= 0)
+        return 0;
+    return xbox_D3D8WindowToGuest((float)p.x, (float)p.y, (float)r.right, (float)r.bottom,
+                                  gx, gy);
+}
+
 static LRESULT CALLBACK shadow_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     if (shadow_mouse_button(hwnd, msg, wp))
@@ -500,6 +529,15 @@ static LRESULT CALLBACK shadow_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             recomp_mouse_wheel(n);
         return 0;
     }
+    case WM_APP_POINTER:
+        if (wp) {
+            shadow_mouse_capture(hwnd, 0);
+        } else if (GetForegroundWindow() == hwnd) {
+            /* Out of the menu, back in front: aim again without a click
+             * (leaving the pause menu left the mouse dead until one). */
+            shadow_mouse_capture(hwnd, 1);
+        }
+        return 0;
     case WM_KEYDOWN:
         /* Esc gives the pointer back, to leave the window without Alt+Tab; a
          * click in it takes it again. Esc is not one of the console's keys
@@ -513,8 +551,8 @@ static LRESULT CALLBACK shadow_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
          * -- one on the title bar is someone moving the window. */
         if (LOWORD(wp) == WA_INACTIVE)
             shadow_mouse_capture(hwnd, 0);
-        else if (LOWORD(wp) == WA_ACTIVE && !HIWORD(wp))   /* not minimised */
-            shadow_mouse_capture(hwnd, 1);
+        else if (LOWORD(wp) == WA_ACTIVE && !HIWORD(wp) && !g_pointer_mode)
+            shadow_mouse_capture(hwnd, 1);  /* not minimised, not in a menu */
         break;
     case WM_CANCELMODE:
     case WM_CAPTURECHANGED:
@@ -544,7 +582,8 @@ static LRESULT CALLBACK shadow_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     case WM_SETCURSOR:
         /* The game has no pointer; over a fullscreen picture it is in the
          * way, and with mouse look the pointer is not a pointer at all. */
-        if ((g_shadow_fullscreen || g_mouse_captured) && LOWORD(lp) == HTCLIENT) {
+        if ((g_shadow_fullscreen || g_mouse_captured || g_pointer_mode) &&
+            LOWORD(lp) == HTCLIENT) {
             SetCursor(NULL);
             return TRUE;
         }
@@ -767,6 +806,11 @@ static int shadow_key_down(int vk)
 #define SHADOW_KEY_F11  VK_F11
 
 #else
+/* The pointer mode (above) is the Win32 window's; elsewhere a title's menus
+ * fall back to moving their pointer by the mouse's motion. */
+void xbox_HleSetPointerMode(int on) { (void)on; }
+int  xbox_HlePointerGuest(float *gx, float *gy) { (void)gx; (void)gy; return 0; }
+
 /* ------------------------------------------- the window, everywhere else
  *
  * The host shell's window (src/host/host.h), made and driven on the main

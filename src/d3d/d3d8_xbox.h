@@ -1319,6 +1319,12 @@ void xbox_D3D8SetTwoDPlacement(int placement, uint32_t tag);
  * (CENTRE above). It is not part of the frame. */
 void xbox_D3D8SetPointer(int shown, float x, float y);
 
+/* A position in the window's client area (x, y of client_w x client_h) in
+ * the title's 2D pixels, the way back of the placement above. 0 before the
+ * first present. */
+int  xbox_D3D8WindowToGuest(float x, float y, float client_w, float client_h,
+                            float *gx, float *gy);
+
 /* A title's own test for which of its fixed-function draws are screen-space.
  * The renderer knows two kinds: pre-transformed vertices, and a vertex
  * program that does not use the projection. A title can draw its 2D a third
