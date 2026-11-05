@@ -1230,6 +1230,30 @@ float xbox_D3D8ClaimHorPlus(void);
  * capture: a replay draws the title's own viewports. */
 void xbox_D3D8SetVerticalZoom(float zoom);
 
+/* Overscan, for frame interpolation: a title that culls against its own
+ * projection draws nothing past the screen's edges, so an in-between frame
+ * turned part of the way back toward the frame before has holes along the
+ * edge it turns toward. Such a title widens its projection by `zoom` both
+ * ways (in tangent space: its culling too) and passes the same number here;
+ * the renderer then draws each 3D viewport that much larger about its own
+ * middle and scissors it to the viewport the title asked for, so the
+ * picture is what it was and the frame holds what lies just past it.
+ * Screen-space draws and offscreen targets are left alone. 1 turns it off;
+ * call it between frames. Not recorded in a frame capture. */
+void xbox_D3D8SetOverscan(float zoom);
+/* The widened camera's projection scale, x and y, each time it is built:
+ * only 3D draws through a projection of its shape (y over x) are zoomed,
+ * so a title's other perspective draws -- a map drawn into a corner and
+ * copied out -- stay where it put them. Not set: every 3D draw. */
+void xbox_D3D8SetOverscanProjection(float x_scale, float y_scale);
+
+/* Sample one texture stage at the console's level of detail rather than
+ * the supersampled scene's (RECOMP_RES_SCALE): its mip level biased by
+ * log2 of the scale. For a fine detail texture a title switches on and off
+ * by distance, whose switching the console's resolution hid. Call between
+ * frames; FALSE puts it back. */
+void xbox_D3D8SetStageConsoleDetail(DWORD stage, BOOL on);
+
 /* Widescreen by screen, for a 4:3 title widened with Hor+ whose menus
  * cannot be. FALSE: the frames drawn from now on are shown at 4:3 between
  * bars, with their 2D left unsqueezed; TRUE (the default) puts them back

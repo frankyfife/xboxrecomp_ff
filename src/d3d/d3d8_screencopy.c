@@ -19,6 +19,16 @@
  * with Load at integer pixels also means no sampler is bound, so a texture
  * stage the title set is left alone -- the same rule d3d8_overlay.c follows
  * and for the same reason.
+ *
+ * A whole frame rendered larger than the console's (RECOMP_RES_SCALE) is
+ * copied softened, each pixel the average of the console pixel around it.
+ * The copy a title takes is a picture at its own resolution, and the soften
+ * it draws with it -- the copy shifted by one of its pixels, at a fifth or a
+ * quarter of full strength -- is a blur only at that resolution. Copied
+ * sharp at scale 5, the shift is five sharp pixels: every edge drawn twice,
+ * a pale seam beside each one, crawling as the view turns. That one sampler
+ * (slot 9, which no title stage uses; the resolve sets its own) is the
+ * exception to "no sampler".
  */
 #include "d3d8_internal.h"
 #include "d3d8_xbox.h"
@@ -32,6 +42,8 @@ static struct {
     RhiView        *back_srv;       /* the scene, which the device owns */
     RhiShader      *vs;
     RhiShader      *ps;
+    RhiShader      *ps_soft;        /* the scaled whole frame, softened */
+    RhiSampler     *sampler;
     RhiBuffer      *cb;
     RhiBlendState  *blend;
     RhiDepthState  *depth;
@@ -41,11 +53,16 @@ static struct {
 
 /* Source pixel = destination pixel * scale + offset. Scale is one when the
  * sizes agree, which they do whenever a title reads back its whole screen;
- * the offset places a rectangle (xbox_D3D8CopyBackBufferRectToTexture). */
-typedef struct { float scale_x, scale_y, off_x, off_y; } ScreenCopyConstants;
+ * the offset places a rectangle (xbox_D3D8CopyBackBufferRectToTexture).
+ * texel is one over the frame's size and foot the frame pixels in one of
+ * the console's, for the softened copy. */
+typedef struct {
+    float scale_x, scale_y, off_x, off_y;
+    float texel_x, texel_y, foot_x, foot_y;
+} ScreenCopyConstants;
 
 static const char kSource[] =
-    "cbuffer ScreenCopy : register(b7) { float4 scale; };\n"
+    "cbuffer ScreenCopy : register(b7) { float4 scale; float4 soft; };\n"
     "struct VSOut { float4 pos : SV_Position; };\n"
     "VSOut vs_main(uint id : SV_VertexID) {\n"
     "    float2 c = float2((id << 1) & 2, id & 2);\n"   /* one oversized triangle */
@@ -57,6 +74,21 @@ static const char kSource[] =
     "float4 ps_main(VSOut i) : SV_Target {\n"
     "    int2 p = int2(i.pos.xy * scale.xy + scale.zw);\n"
     "    return screen.Load(int3(p, 0));\n"
+    "}\n"
+    /* The console pixel's footprint, foot x foot frame pixels around this
+     * one, in n x n bilinear taps: each tap already averages its 2x2, so
+     * half as many taps a side as the footprint is wide covers it. */
+    "SamplerState smp : register(s9);\n"
+    "float4 ps_soft(VSOut i) : SV_Target {\n"
+    "    int n = max(1, (int)ceil(soft.w * 0.5));\n"
+    "    float2 step = soft.zw / n;\n"
+    "    float2 base = i.pos.xy - soft.zw * 0.5;\n"
+    "    float4 sum = 0;\n"
+    "    for (int y = 0; y < n; y++)\n"
+    "        for (int x = 0; x < n; x++)\n"
+    "            sum += screen.SampleLevel(smp,\n"
+    "                       (base + (float2(x, y) + 0.5) * step) * soft.xy, 0);\n"
+    "    return sum / (float)(n * n);\n"
     "}\n";
 
 static void fail(const char *what)
@@ -94,6 +126,7 @@ static int create(void)
     RhiBlendDesc bl;
     RhiDepthDesc ds;
     RhiRasterDesc rd;
+    RhiSamplerDesc sm;
 
     if (g.failed) return 0;
     if (g.tried) return g.back_srv != NULL;
@@ -109,6 +142,14 @@ static int create(void)
 
     if (!(g.vs = compile_one(RHI_STAGE_VERTEX, "vs_main", "vs_4_0"))) return 0;
     if (!(g.ps = compile_one(RHI_STAGE_PIXEL, "ps_main", "ps_4_0"))) return 0;
+    if (!(g.ps_soft = compile_one(RHI_STAGE_PIXEL, "ps_soft", "ps_4_0"))) return 0;
+
+    memset(&sm, 0, sizeof sm);
+    sm.filter = RHI_FILTER_LINEAR;
+    sm.address_u = sm.address_v = sm.address_w = RHI_ADDRESS_CLAMP;
+    sm.compare = RHI_CMP_NEVER;
+    sm.max_lod = 3.402823466e+38f;          /* D3D11_FLOAT32_MAX */
+    if (!(g.sampler = rhi_sampler_create(&sm))) { fail("CreateSamplerState"); return 0; }
 
     memset(&bd, 0, sizeof bd);
     bd.size = sizeof(ScreenCopyConstants);
@@ -214,6 +255,7 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     float blend_factor[4] = { 1, 1, 1, 1 };
     UINT back_w = d3d8_GetBackBufferWidth(), back_h = d3d8_GetBackBufferHeight();
     UINT tex_w, tex_h;
+    int soft = 0;
     void *mapped;
 
     if (!rhi_device_ready() || !tex || !tex->image || !back_w || !back_h)
@@ -269,6 +311,17 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     c.scale_x = tex_w ? (float)back_w / (float)tex_w : 1.0f;
     c.scale_y = tex_h ? (float)back_h / (float)tex_h : 1.0f;
     c.off_x = c.off_y = 0.0f;
+    c.texel_x = 1.0f / (float)back_w;
+    c.texel_y = 1.0f / (float)back_h;
+    c.foot_x = c.foot_y = 1.0f;
+    if (!src && tex_w == back_w && tex_h == back_h &&
+        (back_w > d3d8_GetGuestWidth() || back_h > d3d8_GetGuestHeight())) {
+        UINT guest_w = d3d8_GetGuestWidth(), guest_h = d3d8_GetGuestHeight();
+
+        c.foot_x = guest_w ? (float)back_w / (float)guest_w : 1.0f;
+        c.foot_y = guest_h ? (float)back_h / (float)guest_h : 1.0f;
+        soft = c.foot_x > 1.0f || c.foot_y > 1.0f;
+    }
     if (src) {
         /* The rectangle is in the title's pixels and the frame may be
          * rendered larger (RECOMP_RES_SCALE): one texture pixel is
@@ -310,8 +363,10 @@ static HRESULT copy_to_texture(IDirect3DTexture8 *dst, const RECT *src, const PO
     rhi_set_vertex_layout(NULL);
     rhi_set_topology(RHI_TOPOLOGY_TRIANGLES);
     rhi_set_shader(RHI_STAGE_VERTEX, g.vs);
-    rhi_set_shader(RHI_STAGE_PIXEL, g.ps);
+    rhi_set_shader(RHI_STAGE_PIXEL, soft ? g.ps_soft : g.ps);
     rhi_set_uniform_buffers(RHI_STAGE_PIXEL, 7, 1, &g.cb);
+    if (soft)
+        rhi_set_samplers(9, 1, &g.sampler);
     /* Asked for every time: while frame interpolation draws an in-between
      * frame, the scene is a second image (xbox_D3D8InterpBegin). */
     g.back_srv = d3d8_GetSceneView();
@@ -344,6 +399,8 @@ void xbox_D3D8ScreenCopyShutdown(void)
     g.back_srv = NULL;
     rhi_shader_destroy(g.vs);            g.vs = NULL;
     rhi_shader_destroy(g.ps);            g.ps = NULL;
+    rhi_shader_destroy(g.ps_soft);       g.ps_soft = NULL;
+    rhi_sampler_destroy(g.sampler);      g.sampler = NULL;
     rhi_buffer_destroy(g.cb);            g.cb = NULL;
     rhi_blend_state_destroy(g.blend);    g.blend = NULL;
     rhi_depth_state_destroy(g.depth);    g.depth = NULL;

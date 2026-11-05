@@ -74,6 +74,9 @@ int  d3d8_vsh_bound_projection_is_ortho(void) { return 0; }
 float d3d8_vsh_hor_plus_for_draw(void) { return 1.0f; }
 DWORD d3d8_GetCurrentFVF(void) { return 0; }
 void d3d8_SetTwoDSqueeze(BOOL on) { (void)on; }
+void d3d8_SetOverscanDraw(BOOL has_projection, float x_scale, float y_scale)
+{ (void)has_projection; (void)x_scale; (void)y_scale; }
+int  d3d8_vsh_bound_projection_scale(float *x, float *y) { (void)x; (void)y; return 0; }
 
 #define CONFIGS 400
 

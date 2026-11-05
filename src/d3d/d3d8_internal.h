@@ -47,6 +47,9 @@ RhiView  *d3d8_GetDefaultTargetView(void);
  * projection. Only matters in widescreen, where the two need different
  * horizontal treatment. */
 void d3d8_SetTwoDSqueeze(BOOL on);
+/* And whether its projection is the one the title widened for overscan
+ * (xbox_D3D8SetOverscanProjection): x and y scale as uploaded. */
+void d3d8_SetOverscanDraw(BOOL has_projection, float x_scale, float y_scale);
 
 /* Clear with rectangles (d3d8_clear.c): each rectangle, in the target's
  * host pixels, clipped to width x height, cleared through a draw -- colour,

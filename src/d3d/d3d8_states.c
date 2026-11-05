@@ -12,6 +12,7 @@
 
 #include "d3d8_internal.h"
 #include "d3d8_display.h"
+#include <math.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -349,6 +350,27 @@ static void sampler_cache_shutdown(void)
     memset(g_sampler_bound_desc, 0, sizeof(g_sampler_bound_desc));
 }
 
+/* xbox_D3D8SetStageConsoleDetail: a stage sampled at the console's level of
+ * detail, not the supersampled scene's. Rendered N times larger, a texture
+ * is read N times finer, which is the point for the textures a title shows;
+ * but a fine detail texture faded or switched in and out by distance was,
+ * at the console's 640x480, mostly averaged to a flat tone where it
+ * switched, and resolved sharply its switching shows. log2(N) on the mip
+ * level puts it back. Not on MoltenVK, which has no sampler LOD bias. */
+static float g_stage_console_bias[4];
+
+void xbox_D3D8SetStageConsoleDetail(DWORD stage, BOOL on)
+{
+    UINT scale = d3d8_display_policy()->scale;
+
+    if (stage >= 4)
+        return;
+    g_stage_console_bias[stage] = (on && scale > 1) ? log2f((float)scale) : 0.0f;
+    if (on && scale > 1)
+        fprintf(stderr, "D3D8: texture stage %lu sampled at the console's detail "
+                "(mip bias %.2f)\n", (unsigned long)stage, (double)g_stage_console_bias[stage]);
+}
+
 void d3d8_states_apply_sampler(DWORD stage)
 {
     const DWORD *tss;
@@ -405,6 +427,7 @@ void d3d8_states_apply_sampler(DWORD stage)
     }
     sd.compare = RHI_CMP_NEVER;
     sd.max_lod = 3.402823466e+38f;          /* D3D11_FLOAT32_MAX */
+    sd.mip_lod_bias = g_stage_console_bias[stage];
 
     /* Unchanged since it was bound: nothing to do. */
     if (g_sampler_states[stage] &&

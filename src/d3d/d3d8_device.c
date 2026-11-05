@@ -19,6 +19,7 @@
 #include "d3d8_display.h"
 #include "d3d8_fvf.h"         /* d3d8_fvf_transformed: draw_extent */
 #include "recomp_config.h"   /* RECOMP_VRR */
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 /* malloc: without <stdlib.h> its pointer is truncated to int. */
@@ -450,7 +451,78 @@ static BOOL three_d_vzoom(float *zoom_out, float *cy_out)
     return TRUE;
 }
 
+/* Overscan (xbox_D3D8SetOverscan): how much larger both ways than the title
+ * asked a 3D viewport on the screen is drawn, about its own middle, with
+ * the scissor kept to the viewport the title asked for. 1 is off. Only for
+ * draws through the widened camera: g_os_aspect is its projection's y scale
+ * over its x scale (xbox_D3D8SetOverscanProjection), and g_os_draw whether
+ * the draw in hand reads a projection of that shape (d3d8_SetOverscanDraw).
+ * TimeSplitters 2 draws its handheld's map in perspective into a corner of
+ * the screen and copies the corner out: zoomed with the rest, the map left
+ * the corner. A field of view that changes (a scope zooming in) keeps the
+ * shape, so its in-between frames stay zoomed. */
+static float g_3d_overscan = 1.0f;
+static float g_os_aspect;
+static BOOL  g_os_draw = TRUE;
+
+static BOOL three_d_overscan(float *zoom_out)
+{
+    if (g_3d_overscan == 1.0f || !g_os_draw || g_2d_screen_space || g_cur_rt)
+        return FALSE;
+    *zoom_out = g_3d_overscan;
+    return TRUE;
+}
+
+static BOOL g_interp_on;           /* drawing an in-between frame (below) */
+
+/* A 3D draw to the screen whose scissor this file decides: under overscan,
+ * or in an in-between frame (d3d8_GetScissor), the camera's draws only. */
+static BOOL three_d_held_to_viewport(void)
+{
+    return (g_3d_overscan != 1.0f || g_interp_on) && g_os_draw &&
+           !g_2d_screen_space && !g_cur_rt;
+}
+
 static void apply_host_viewport(void);
+
+void xbox_D3D8SetOverscanProjection(float x_scale, float y_scale)
+{
+    g_os_aspect = (x_scale != 0.0f) ? y_scale / x_scale : 0.0f;
+}
+
+/* Per draw, from the shader path (d3d8_shaders.c): whether the bound
+ * program's projection is the camera's. Cheap when nothing changes. */
+void d3d8_SetOverscanDraw(BOOL has_projection, float x_scale, float y_scale)
+{
+    BOOL match = TRUE;
+
+    if (g_os_aspect != 0.0f) {
+        float a = (has_projection && x_scale != 0.0f) ? y_scale / x_scale : 0.0f;
+        match = has_projection && fabsf(a - g_os_aspect) <= 0.01f * fabsf(g_os_aspect);
+    }
+    if (match == g_os_draw)
+        return;
+    g_os_draw = match;
+    if (g_3d_overscan != 1.0f)
+        apply_host_viewport();
+}
+
+void xbox_D3D8SetOverscan(float zoom)
+{
+    if (!(zoom >= 1.0f && zoom <= 2.0f))
+        zoom = 1.0f;
+    if (zoom == g_3d_overscan)
+        return;
+    {
+        static int said;
+        if (zoom != 1.0f && !said++)
+            fprintf(stderr, "D3D8 display: the title draws %.4gx past the screen's edges; "
+                    "3D viewports are drawn that much larger about their middles and "
+                    "cropped to the viewport asked for\n", (double)zoom);
+    }
+    g_3d_overscan = zoom;
+    apply_host_viewport();
+}
 
 void xbox_D3D8SetVerticalZoom(float zoom)
 {
@@ -631,11 +703,52 @@ BOOL d3d8_GetScissor(RhiRect *out)
             top    = cy + (top    - cy) * zoom;
             bottom = cy + (bottom - cy) * zoom;
         }
+        if (three_d_held_to_viewport()) {
+            const D3DVIEWPORT8 *vp = &g_device_state.viewport;
+            float vl = (float)vp->X * sx, vt = (float)vp->Y * sy;
+            float vr = vl + (float)vp->Width * sx, vb = vt + (float)vp->Height * sy;
+
+            /* A title's scissor on a 3D draw is in the picture its
+             * projection makes, so under overscan it grows with the
+             * viewport, about the same middle (TimeSplitters 2 clips each
+             * room it sees through a doorway to the doorway's rectangle:
+             * left as asked, the level was cut away inside the picture). */
+            if (g_scissor_enabled && three_d_overscan(&zoom)) {
+                float mx = (vl + vr) * 0.5f, my = (vt + vb) * 0.5f;
+
+                left   = mx + (left   - mx) * zoom;
+                right  = mx + (right  - mx) * zoom;
+                top    = my + (top    - my) * zoom;
+                bottom = my + (bottom - my) * zoom;
+            }
+            /* An in-between frame (frame interpolation) is the newest
+             * frame's draws seen from part of the way back, and a
+             * doorway's rectangle is where the doorway was in the newest
+             * frame: what moved past its edge was cut off, and the sky
+             * showed in slivers beside it. There the title's rectangle is
+             * left out and the depth buffer does its work; the viewport
+             * still holds. */
+            if (!g_scissor_enabled || g_interp_on) {
+                left = vl; top = vt; right = vr; bottom = vb;
+            } else {
+                if (left < vl)   left = vl;
+                if (top < vt)    top = vt;
+                if (right > vr)  right = vr;
+                if (bottom > vb) bottom = vb;
+            }
+            out->left   = (int32_t)left;
+            out->top    = (int32_t)top;
+            out->right  = (int32_t)right;
+            out->bottom = (int32_t)bottom;
+            return TRUE;
+        }
         out->left   = (int32_t)left;
         out->top    = (int32_t)top;
         out->right  = (int32_t)right;
         out->bottom = (int32_t)bottom;
     }
+    if (!out && three_d_held_to_viewport())
+        return TRUE;
     return g_scissor_enabled;
 }
 UINT d3d8_GetGuestHeight(void) { return g_guest_height ? g_guest_height : g_device_state.present_height; }
@@ -2207,6 +2320,18 @@ static void apply_host_viewport(void)
             hv.y = cy + (hv.y - cy) * zoom;
             hv.height *= zoom;
         }
+        /* Overscan: the title's projection is wider than its picture by
+         * this much both ways, so the viewport is that much larger about
+         * its own middle -- each player's, in a split screen -- and what
+         * lies past the edges is cropped (d3d8_GetScissor). */
+        if (three_d_overscan(&zoom)) {
+            float mx = hv.x + hv.width * 0.5f, my = hv.y + hv.height * 0.5f;
+
+            hv.width *= zoom;
+            hv.height *= zoom;
+            hv.x = mx - hv.width * 0.5f;
+            hv.y = my - hv.height * 0.5f;
+        }
     }
 
     rhi_set_viewports(1, &hv);
@@ -2232,7 +2357,7 @@ void d3d8_SetTwoDSqueeze(BOOL on)
     g_2d_screen_space = on ? TRUE : FALSE;
     /* The vertical zoom is for 3D draws only, so the viewport changes with
      * the kind of draw even where the squeeze does not. */
-    if (was != g_2d_screen_space && g_3d_vzoom != 1.0f) {
+    if (was != g_2d_screen_space && (g_3d_vzoom != 1.0f || g_3d_overscan != 1.0f)) {
         g_2d_squeeze = (on && d3d8_display_wide_now()) ? TRUE : FALSE;
         apply_host_viewport();
         return;
@@ -2887,7 +3012,7 @@ static HRESULT __stdcall dev_Swap(IDirect3DDevice8 *self, DWORD Flags)
 static RhiImage *g_interp_image;
 static RhiView  *g_interp_rtv, *g_interp_srv;
 static UINT      g_interp_w, g_interp_h;
-static BOOL      g_interp_on;
+/* g_interp_on: declared above, with the scissor that reads it. */
 
 static void interp_target_destroy(void)
 {

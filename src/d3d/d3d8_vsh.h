@@ -272,6 +272,7 @@ int  d3d8_vsh_bound_uses_projection(void);
 /* ... and whether that projection, as uploaded right now, is orthographic:
  * a constant w row. A HUD drawn through the 3D programs looks like this. */
 int  d3d8_vsh_bound_projection_is_ortho(void);
+int  d3d8_vsh_bound_projection_scale(float *x, float *y);
 /* The Hor+ factor a draw in hand gets: 1 off the screen (d3d8_target_is_screen),
  * once a title has claimed the factor, or with Hor+ off. The fixed-function
  * path scales its projection by it, so a title that mixes programs with

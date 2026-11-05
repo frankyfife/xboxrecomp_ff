@@ -1227,6 +1227,11 @@ void d3d8_shaders_prepare_draw(DWORD handle)
          * same through the matrix. */
         d3d8_SetTwoDSqueeze(!d3d8_vsh_bound_uses_projection()
                             || d3d8_vsh_bound_projection_is_ortho());
+        {
+            float px = 0.0f, py = 0.0f;
+            int has = d3d8_vsh_bound_projection_scale(&px, &py);
+            d3d8_SetOverscanDraw(has, px, py);
+        }
     } else {
         ff_vs_prepare_draw(handle);
         /* The fixed-function equivalent: pre-transformed vertices arrive
@@ -1238,6 +1243,7 @@ void d3d8_shaders_prepare_draw(DWORD handle)
          * screen-space draw to this test and was left unsqueezed in
          * widescreen -- a third wider on screen while the race was right. */
         d3d8_SetTwoDSqueeze(d3d8_fvf_transformed(handle));
+        d3d8_SetOverscanDraw(FALSE, 0.0f, 0.0f);
     }
 
     /* Pixel state is independent of whether the vertex shader is programmable.

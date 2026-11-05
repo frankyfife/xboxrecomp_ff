@@ -119,6 +119,19 @@ static int g_bound_proj_reg = -1;
 
 int d3d8_vsh_bound_uses_projection(void) { return g_bound_proj_reg >= 0; }
 
+/* The bound program's projection scale, x from its first register and y
+ * from its second, as currently uploaded; 0 when it reads none. */
+int d3d8_vsh_bound_projection_scale(float *x, float *y)
+{
+    int reg = g_bound_proj_reg;
+
+    if (reg < 0 || reg + 1 >= NV2A_VS_MAX_CONSTANTS)
+        return 0;
+    *x = g_vsh_constants.c[reg][0];
+    *y = g_vsh_constants.c[reg + 1][1];
+    return 1;
+}
+
 /* Whether the projection the bound program reads is orthographic right now.
  *
  * Reading the projection register says a program transforms through a

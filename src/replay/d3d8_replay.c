@@ -1773,7 +1773,8 @@ static void usage(void)
         "                   [--place <tag|all>=<placement>]...\n"
         "                   [--solo-tag <tag>] [--each-tag]\n"
         "                   [--hide-tag <tag>] [--each-tag-hidden]\n"
-        "                   [--const-patch <file>]\n",
+        "                   [--const-patch <file>] [--overscan <zoom>]\n"
+        "                   [--console-detail <stage>]\n",
         D3D8CAP_EXTENSION);
 }
 
@@ -1781,6 +1782,8 @@ static int replay_main(int argc, char **argv)
 {
     const char *path = NULL, *prefix = "replay";
     int loops = 1, dump_every = 0, hold = 0, present = 0, each_tag = 0, i, loop;
+    float overscan = 1.0f;
+    int console_detail = -1;
     const char *backend = NULL;
     char err[128], out[512];
     D3D8CapReader *cap;
@@ -1812,6 +1815,10 @@ static int replay_main(int argc, char **argv)
 #endif
         else if (!strcmp(argv[i], "--quiet"))
             g_quiet = 1;
+        else if (!strcmp(argv[i], "--overscan") && i + 1 < argc)
+            overscan = (float)atof(argv[++i]);
+        else if (!strcmp(argv[i], "--console-detail") && i + 1 < argc)
+            console_detail = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--no-combiners"))
             g_no_combiners = 1;
         else if (!strcmp(argv[i], "--dump-drawn")) {
@@ -1955,6 +1962,14 @@ static int replay_main(int argc, char **argv)
      * any Hor+ scaling. Scaling them again here (RECOMP_HOR_PLUS, or the
      * settings file) would widen the replayed view twice. */
     xbox_D3D8ClaimHorPlus();
+    /* --overscan <zoom>: what xbox_D3D8SetOverscan did in the run, which a
+     * capture does not record; a capture taken with it shows the wider
+     * picture the title drew without it. */
+    if (overscan > 1.0f)
+        xbox_D3D8SetOverscan(overscan);
+    /* --console-detail <stage>: as xbox_D3D8SetStageConsoleDetail in the run. */
+    if (console_detail >= 0)
+        xbox_D3D8SetStageConsoleDetail((DWORD)console_detail, TRUE);
     /* --place all=: also the placement the frame starts under. A title that
      * never sets one (OutRun 2) records no placement chunk to override, so
      * without this the option would do nothing there. */

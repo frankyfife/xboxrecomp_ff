@@ -37,9 +37,16 @@
  *
  * Blending (the registers: xbox_D3D8SetInterpRegisters, interp_projection,
  * interp_affine). The projection is blended term by term, if both frames
- * have the same kind. Each 4-register affine matrix is split into rotation,
- * scale and translation; the rotation is blended as a quaternion and the
- * other two linearly, so a turning object keeps its size. A matrix that
+ * have the same kind. Each 4-register affine matrix that turned less than
+ * 30 degrees in the frame is blended term by term: that is linear in the
+ * vertices, so two meshes whose edges meet in both frames (a wall and the
+ * pillar beside it, each with its own model-view) still meet in between.
+ * Splitting each matrix into rotation, scale and translation and blending
+ * the rotation as a quaternion opened gaps along such edges, wider the
+ * faster the view moved. The cost is a slight shrink as the matrix turns:
+ * 0.14% at 6 degrees a frame (a fast mouse turn), 3.4% at 30. Above 30
+ * degrees the split is used, so a fast-spinning object keeps its size. A
+ * matrix that
  * turned more than 45 degrees or moved by half its distance in one frame
  * is a cut, and drawn as N has it. Only draws whose program goes through
  * the projection are blended: screen-space draws are N's exactly, so the
@@ -83,6 +90,7 @@
 #define MAX_CUT              0.50
 #define MAX_TURN_COS         0.92387953          /* cos(45 deg / 2) */
 #define MAX_MOVE             0.5                 /* of the distance */
+#define LINEAR_TURN_COS      0.96592583          /* cos(30 deg / 2) */
 
 typedef struct {
     uint32_t size;                               /* payload bytes */
@@ -114,6 +122,7 @@ typedef struct {
  * turned to the same hemisphere), the rest of the 3x3, the translation. */
 typedef struct {
     int    ok;
+    int    linear;                               /* turned little: term by term */
     double qa[4], qb[4];
     double sa[9], sb[9];
     double ta[3], tb[3];
@@ -566,6 +575,7 @@ static void prepare_group(Prepared *p, const float *a, const float *b, int *cut)
         *cut = 1;                                /* a jump, not motion */
         return;
     }
+    p->linear = dot >= LINEAR_TURN_COS;
     p->ok = 1;
 }
 
@@ -718,8 +728,14 @@ static void set_draw_registers(int i, double a)
         }
         for (g = 0; g < g_groups; g++) {
             const Prepared *p = &g_prep[i * g_groups + g];
-            if (p->ok)
-                blend_group(p, a, o + g * 16);
+            const size_t at = (size_t)(o - out) + (size_t)g * 16;
+
+            if (p->ok && p->linear) {
+                for (k = 0; k < 12; k++)
+                    out[at + k] = (float)((1.0 - a) * pa[at + k] + a * b[at + k]);
+            } else if (p->ok) {
+                blend_group(p, a, out + at);
+            }
         }
     }
     if (g_proj >= 0) {
